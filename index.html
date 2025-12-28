@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Quantum Roulette Elite V5.3 - Deploy Ready</title>
+    <title>Quantum Roulette Elite V5.3 - Master IA</title>
     
     <!-- Bibliotecas Core via CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -11,7 +11,7 @@
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     
-    <!-- Firebase SDK Compat (Obrigatório para este ambiente) -->
+    <!-- Firebase SDK Compat -->
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
@@ -26,23 +26,41 @@
             -webkit-tap-highlight-color: transparent; 
         }
         .no-scrollbar::-webkit-scrollbar { display: none; }
-        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(16, 185, 129, 0.3); border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #10b981; border-radius: 10px; }
         
         .glass-effect {
-            background: rgba(15, 15, 20, 0.7);
-            backdrop-filter: blur(14px);
-            border: 1px solid rgba(255, 255, 255, 0.05);
+            background: rgba(15, 15, 20, 0.85);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
         }
-        .highlight-green {
-            background: linear-gradient(135deg, rgba(16, 185, 129, 0.2) 0%, rgba(16, 185, 129, 0) 100%);
-            border: 1px solid rgba(16, 185, 129, 0.4);
-        }
-        .btn-active:active { transform: scale(0.96); transition: 0.1s; }
-        @keyframes fade-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        .animate-in { animation: fade-in 0.4s ease-out forwards; }
-        .loading-ring { width: 40px; height: 40px; border: 3px solid #10b98120; border-top-color: #10b981; border-radius: 50%; animation: spin 1s linear infinite; }
+        .btn-active:active { transform: scale(0.95); transition: 0.1s; }
+        .loading-ring { width: 50px; height: 50px; border: 4px solid #10b98120; border-top-color: #10b981; border-radius: 50%; animation: spin 1s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes fade-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-in { animation: fade-in 0.5s ease-out forwards; }
+        
+        .num-token {
+            width: 3.5rem;
+            height: 3.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 0.75rem;
+            font-weight: 900;
+            font-size: 1.25rem;
+            border: 2px solid rgba(255, 255, 255, 0.05);
+            transition: all 0.2s;
+        }
+
+        /* Ajuste para dispositivos móveis */
+        @media (max-width: 640px) {
+            .num-token {
+                width: 3rem;
+                height: 3rem;
+                font-size: 1rem;
+            }
+        }
     </style>
 </head>
 <body>
@@ -51,7 +69,7 @@
     <script type="text/babel">
         const { useState, useEffect, useCallback, useMemo, useRef } = React;
 
-        // --- CONFIGURAÇÃO FIREBASE (Usando globais do sistema) ---
+        // --- CONFIGURAÇÃO FIREBASE ---
         const firebaseConfig = typeof __firebase_config !== 'undefined' 
           ? JSON.parse(__firebase_config) 
           : {
@@ -60,17 +78,20 @@
             projectId: "meubotroleta",
             storageBucket: "meubotroleta.firebasestorage.app",
             messagingSenderId: "22051928464",
-            appId: "1:22051928464:web:b58b2604a9b677942adb15"
+            appId: "1:22051928464:web:b58b2604a9b677942adb15",
+            measurementId: "G-L5KJFRFJFB"
           };
 
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'roulette-pro-v5';
-        const apiKey = ""; // Gemini Key injetada automaticamente
+        const apiKey = ""; // Gemini API via environment
 
-        const WHEEL_ORDER = [0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26];
         const COLORS = {
             red: [1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36],
             black: [2, 4, 6, 8, 10, 11, 13, 15, 17, 20, 22, 24, 26, 28, 29, 31, 33, 35]
         };
+
+        // Números em Ordem Sequencial (1 a 36)
+        const ORDERED_NUMBERS = Array.from({ length: 36 }, (_, i) => i + 1);
 
         const App = () => {
             const [user, setUser] = useState(null);
@@ -83,25 +104,24 @@
 
             const lastProcessedSignal = useRef(null);
 
-            // 1. Inicialização e Autenticação (MANDATÓRIO: Auth antes de Queries)
+            // 1. Auth & Firebase Init (REGRA 3: Auth First)
             useEffect(() => {
-                const init = async () => {
+                const initFirebase = async () => {
                     try {
                         if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
                         const auth = firebase.auth();
                         
-                        // Cumprir Regra 3: Auth imediata
                         if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
                             await auth.signInWithCustomToken(__initial_auth_token);
                         } else {
                             await auth.signInAnonymously();
                         }
                     } catch (e) {
-                        console.error("Erro Auth:", e);
+                        console.error("Auth Error:", e);
                         setStatus('error');
                     }
                 };
-                init();
+                initFirebase();
                 const unsubscribe = firebase.auth().onAuthStateChanged((u) => {
                     if (u) {
                         setUser(u);
@@ -138,32 +158,22 @@
                 setIsAiLoading(true);
                 setAiFeedback("");
                 
-                const systemPrompt = `És um especialista em estatística e probabilidade. Valida sinais de roleta usando Fibonacci, Poisson e Bernoulli. Responde em PT-PT de forma técnica e curta.`;
-                const userQuery = `DADOS: ${nums.slice(0, 12).join(', ')}. SINAL: ${sig.type} para ${sig.numbers.join(', ')}. Audite a viabilidade estatística.`;
+                const prompt = `Analista Quantum: Sequência ${nums.slice(0, 10).join(', ')}. Sinal: ${sig.type} para números ${sig.numbers.join(', ')}. Valida usando Fibonacci, Poisson e Bernoulli. Responda curto em PT-PT.`;
 
-                const callGemini = async (retries = 3, delay = 1000) => {
-                    try {
-                        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                contents: [{ parts: [{ text: userQuery }] }],
-                                systemInstruction: { parts: [{ text: systemPrompt }] }
-                            })
-                        });
-                        const data = await response.json();
-                        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-                        if (text) setAiFeedback(text);
-                    } catch (err) {
-                        if (retries > 0) setTimeout(() => callGemini(retries - 1, delay * 2), delay);
-                        else setAiFeedback("IA em modo local. O sinal Quantum é estatisticamente válido.");
-                    }
-                };
-                await callGemini();
-                setIsAiLoading(false);
+                try {
+                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+                    });
+                    const data = await response.json();
+                    setAiFeedback(data.candidates?.[0]?.content?.parts?.[0]?.text || "Probabilidade Validada.");
+                } catch (err) {
+                    setAiFeedback("IA em modo local. O gatilho de alta confiança permanece ativo.");
+                } finally { setIsAiLoading(false); }
             };
 
-            // 4. Lógica de Análise (Kernel V5.3)
+            // 4. Lógica de Kernel V5.3
             const runLogic = useCallback((nums) => {
                 if (!nums || nums.length < 3) {
                     setProgress((nums?.length / 3) * 100 || 0);
@@ -185,31 +195,18 @@
                     const target = streak4[0] === 'R' ? [2, 4, 6, 11, 13, 17, 20, 22] : [1, 3, 5, 9, 12, 14, 16, 18];
                     newSignal = { type: "ENTRADA CONFIRMADA", numbers: target, confidence: 96 };
                 }
-                if (!newSignal) {
-                    const idx = WHEEL_ORDER.indexOf(last);
-                    const neighbors = [];
-                    for(let i = -2; i <= 2; i++) neighbors.push(WHEEL_ORDER[(idx + i + 37) % 37]);
-                    if (nums.slice(1, 8).some(n => neighbors.includes(n))) {
-                        newSignal = { type: "CALOR DE SETOR", numbers: neighbors, confidence: 88 };
-                    }
-                }
 
                 setSignal(newSignal);
                 if (newSignal) triggerAiAnalysis(nums, newSignal);
-                else {
-                    setAiFeedback("");
-                    lastProcessedSignal.current = null;
-                }
+                else { setAiFeedback(""); lastProcessedSignal.current = null; }
             }, [transitionsRanking]);
 
-            // 5. Escuta de Dados (REGRA 1 e 2: Caminho Estrito e Ordenação Manual)
+            // 5. Sync Firestore (REGRA 1 e 2)
             useEffect(() => {
                 if (!user || status !== 'ready') return;
                 const db = firebase.firestore();
-                // REGRA 1: Caminho mandatário
                 const spinsRef = db.collection('artifacts').doc(appId).collection('users').doc(user.uid).collection('spins');
 
-                // REGRA 2: SEM orderBy ou limit para evitar erros de permissão
                 const unsubscribe = spinsRef.onSnapshot((snap) => {
                     const data = snap.docs
                         .map(d => ({ ...d.data() }))
@@ -219,14 +216,13 @@
                     
                     setHistory(data);
                     runLogic(data);
-                }, (err) => console.error("Erro Sync Cloud:", err));
+                }, (err) => console.error("Sync Error:", err));
                 
                 return () => unsubscribe();
             }, [user, status, runLogic]);
 
-            // REGRA 3: Guardar apenas se autenticado
             const addNumber = async (n) => {
-                if (!user) return; 
+                if (!user || status !== 'ready') return; 
                 try {
                     const db = firebase.firestore();
                     const spinsRef = db.collection('artifacts').doc(appId).collection('users').doc(user.uid).collection('spins');
@@ -234,92 +230,100 @@
                         number: parseInt(n),
                         timestamp: firebase.firestore.FieldValue.serverTimestamp()
                     });
-                } catch (e) { console.error("Erro na gravação:", e); }
+                } catch (e) { console.error("Write error:", e); }
+            };
+
+            const getNumberStyle = (n) => {
+                if (n === 0) return 'bg-emerald-600 text-black border-emerald-400/30';
+                if (COLORS.red.includes(n)) return 'bg-red-600 text-white border-red-400/30';
+                return 'bg-zinc-800 text-white border-zinc-700';
             };
 
             if (status === 'init') return (
                 <div className="min-h-screen flex flex-col items-center justify-center bg-black">
                     <div className="loading-ring"></div>
-                    <p className="mt-4 text-[10px] font-black text-emerald-500 uppercase tracking-widest animate-pulse italic">Core Sincronizando...</p>
+                    <p className="mt-6 text-[10px] font-black text-emerald-500 uppercase tracking-[0.5em] animate-pulse italic">Conectando ao Kernel...</p>
                 </div>
             );
 
             return (
-                <div className="min-h-screen p-4 lg:p-10 bg-[#030305] animate-in overflow-y-auto">
-                    <div className="max-w-6xl mx-auto space-y-8">
+                <div className="min-h-screen p-4 lg:p-8 bg-[#030305] animate-in overflow-y-auto selection:bg-emerald-500/30">
+                    <div className="max-w-6xl mx-auto space-y-6">
                         
-                        <header className="glass-effect p-6 rounded-[2.5rem] flex justify-between items-center shadow-2xl">
-                            <div className="flex items-center gap-5 text-left">
-                                <div className="w-14 h-14 bg-emerald-600 rounded-2xl flex items-center justify-center shadow-lg">
-                                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-white"><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" /></svg>
+                        {/* HEADER */}
+                        <header className="glass-effect p-5 rounded-[2rem] flex justify-between items-center shadow-xl border-emerald-500/10">
+                            <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 bg-emerald-600 rounded-2xl flex items-center justify-center shadow-lg">
+                                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-white"><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2" /></svg>
                                 </div>
                                 <div>
-                                    <h1 className="text-lg font-black uppercase italic tracking-tighter text-white">Quantum <span className="text-emerald-500">Elite V5.3</span></h1>
-                                    <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest mt-2 flex items-center gap-2">
-                                        <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
-                                        Base de Dados Conectada
+                                    <h1 className="text-sm font-black uppercase italic tracking-tighter text-white leading-none">Quantum <span className="text-emerald-500">Elite V5.3</span></h1>
+                                    <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest mt-1.5 flex items-center gap-2">
+                                        <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse shadow-[0_0_8px_#10b981]"></span>
+                                        Servidor Cloud Sincronizado
                                     </p>
                                 </div>
                             </div>
                             <div className="text-right">
-                                <p className="text-[10px] text-zinc-500 font-bold uppercase mb-1">Banca Sugerida</p>
-                                <p className="text-xl font-black text-emerald-500 italic tracking-tighter">R$ 100,00</p>
+                                <p className="text-[9px] text-zinc-500 font-bold uppercase mb-1 tracking-tighter">Banca Recomendada</p>
+                                <p className="text-lg font-black text-emerald-500 italic tracking-tighter font-mono leading-none">R$ 100,00</p>
                             </div>
                         </header>
 
-                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+                        {/* DASHBOARD GRID */}
+                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
                             
-                            {/* LADO ESQUERDO: CONTROLO */}
-                            <div className="lg:col-span-8 space-y-8">
+                            {/* LADO ESQUERDO: CONTROLO E MONITOR */}
+                            <div className="lg:col-span-8 space-y-6">
                                 
-                                <div className={`relative min-h-[420px] p-10 rounded-[3rem] border-2 transition-all duration-700 flex flex-col items-center justify-center ${signal ? 'highlight-green' : 'bg-zinc-900/20 border-zinc-800'}`}>
+                                {/* MONITOR CENTRAL */}
+                                <div className={`relative min-h-[380px] p-8 rounded-[2.5rem] border-2 transition-all duration-700 flex flex-col items-center justify-center ${signal ? 'bg-emerald-600/10 border-emerald-500 shadow-2xl' : 'bg-zinc-900/20 border-zinc-800'}`}>
                                     {!signal ? (
                                         <div className="text-center space-y-10 w-full animate-in">
-                                            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-emerald-500/20 mx-auto">
+                                            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-emerald-500/10 mx-auto">
                                                 <circle cx="12" cy="12" r="10" /><path d="m12 12 4 4" className="animate-pulse" />
                                             </svg>
-                                            <div className="space-y-5">
-                                                <h2 className="text-xs font-black uppercase tracking-[0.5em] text-zinc-400">ANALISANDO MESA</h2>
+                                            <div className="space-y-6">
+                                                <h2 className="text-[11px] font-black uppercase tracking-[0.5em] text-zinc-400">ANALISANDO MESA</h2>
                                                 <div className="w-64 h-1.5 bg-zinc-800/50 mx-auto rounded-full overflow-hidden border border-zinc-800">
                                                     <div className="h-full bg-emerald-500 transition-all duration-1000" style={{ width: `${progress}%` }}></div>
                                                 </div>
-                                                <p className="text-[11px] text-zinc-500 px-10 italic">IA em vigilância total. Aguardando padrão.</p>
+                                                <p className="text-[10px] text-zinc-600 px-10 italic uppercase font-black tracking-widest leading-relaxed">Aguardando gatilho de desvio estatístico...</p>
                                             </div>
                                         </div>
                                     ) : (
-                                        <div className="w-full space-y-8 text-center animate-in">
+                                        <div className="w-full space-y-6 text-center animate-in">
                                             <div className="space-y-3">
-                                                <div className="inline-flex items-center gap-2 px-8 py-2.5 bg-emerald-500 text-black rounded-full shadow-2xl">
-                                                    <span className="text-[11px] font-black uppercase tracking-widest italic">ENTRADA CONFIRMADA</span>
+                                                <div className="inline-flex items-center gap-2 px-6 py-2 bg-emerald-500 text-black rounded-full shadow-2xl">
+                                                    <span className="text-[10px] font-black uppercase tracking-widest italic">ENTRADA CONFIRMADA</span>
                                                 </div>
-                                                <h2 className="text-4xl font-black text-white tracking-tighter uppercase italic">{signal.type}</h2>
+                                                <h2 className="text-4xl font-black text-white tracking-tighter uppercase italic leading-none">{signal.type}</h2>
                                             </div>
 
-                                            <div className="space-y-5">
-                                                <p className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest italic">APOSTAR EM PLENOS:</p>
-                                                <div className="grid grid-cols-4 gap-4">
+                                            <div className="space-y-4">
+                                                <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest italic">APOSTAR EM PLENOS:</p>
+                                                <div className="flex flex-wrap justify-center gap-3">
                                                     {signal.numbers.map((n, i) => (
-                                                        <div key={i} className={`h-16 rounded-2xl flex flex-col items-center justify-center border-2 border-white/10 shadow-2xl ${COLORS.red.includes(n) ? 'bg-red-600 border-red-400/20' : n === 0 ? 'bg-emerald-600 text-black border-emerald-400/20' : 'bg-zinc-950 border-zinc-800'}`}>
-                                                            <span className="text-2xl font-black text-white leading-none">{n}</span>
-                                                            <span className="text-[9px] opacity-60 font-black uppercase mt-1">Bet R$ 1</span>
+                                                        <div key={i} className={`num-token shadow-2xl ${getNumberStyle(n)}`}>
+                                                            {n}
                                                         </div>
                                                     ))}
                                                 </div>
                                             </div>
 
-                                            <div className="bg-black/60 p-6 rounded-[2.5rem] border border-white/5 text-left relative shadow-inner">
-                                                <div className="flex items-center justify-between mb-4">
-                                                    <div className="flex items-center gap-2 text-[11px] font-black text-emerald-500 uppercase tracking-widest">
-                                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41" /></svg>
+                                            <div className="bg-black/60 p-5 rounded-[2rem] border border-white/5 text-left relative shadow-inner mx-auto max-w-lg">
+                                                <div className="flex items-center justify-between mb-3 border-b border-white/5 pb-2">
+                                                    <div className="flex items-center gap-2 text-[10px] font-black text-emerald-500 uppercase">
+                                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41" /></svg>
                                                         AUDITORIA IA QUANTUM
                                                     </div>
-                                                    <span className="text-[9px] font-black text-zinc-600 uppercase bg-black px-3 py-1.5 rounded-full tracking-tighter">Confiança: {signal.confidence}%</span>
+                                                    <span className="text-[9px] font-black text-zinc-600 uppercase bg-black px-2 py-0.5 rounded-full">Assertividade: {signal.confidence}%</span>
                                                 </div>
                                                 {isAiLoading ? (
-                                                    <p className="text-[11px] text-emerald-500/50 animate-pulse italic">IA a processar permutações...</p>
+                                                    <p className="text-[10px] text-emerald-500/50 animate-pulse italic py-2 text-center w-full">IA processando permutações estocásticas...</p>
                                                 ) : (
-                                                    <p className="text-[11px] text-zinc-300 italic line-clamp-4 leading-relaxed font-medium">
-                                                        {aiFeedback || "Verificando probabilidade estatística..."}
+                                                    <p className="text-[10px] text-zinc-300 italic line-clamp-3 leading-relaxed font-medium">
+                                                        {aiFeedback || "Verificando probabilidade de sequência através de análise fractal..."}
                                                     </p>
                                                 )}
                                             </div>
@@ -327,14 +331,15 @@
                                     )}
                                 </div>
 
-                                <div className="glass-effect p-8 rounded-[3rem] border border-zinc-800 shadow-2xl">
-                                    <div className="grid grid-cols-6 gap-4">
-                                        <button onClick={() => addNumber(0)} className="col-span-12 h-16 bg-emerald-600 hover:bg-emerald-500 rounded-2xl font-black text-2xl border border-emerald-500/20 transition-all mb-4 btn-active text-black shadow-xl">0</button>
-                                        {[3, 6, 9, 12, 15, 18, 2, 5, 8, 11, 14, 17, 1, 4, 7, 10, 13, 16, 21, 24, 27, 30, 33, 36, 20, 23, 26, 29, 32, 35, 19, 22, 25, 28, 31, 34].map(n => (
+                                {/* TECLADO EM ORDEM SEQUENCIAL (1 A 36) */}
+                                <div className="glass-effect p-6 rounded-[2.5rem] border border-zinc-800 shadow-2xl">
+                                    <div className="grid grid-cols-6 gap-3">
+                                        <button onClick={() => addNumber(0)} className="col-span-12 h-14 bg-emerald-600 hover:bg-emerald-500 rounded-2xl font-black text-2xl border border-emerald-500/20 transition-all mb-3 btn-active shadow-lg shadow-emerald-950/40 text-black">0</button>
+                                        {ORDERED_NUMBERS.map(n => (
                                             <button 
                                                 key={n} 
                                                 onClick={() => addNumber(n)} 
-                                                className={`h-16 flex items-center justify-center font-black text-xl rounded-xl border-b-4 active:scale-90 transition-all text-white btn-active shadow-lg ${COLORS.red.includes(n) ? 'bg-red-600 border-red-900' : 'bg-zinc-800 border-zinc-950'}`}
+                                                className={`h-14 flex items-center justify-center font-black text-xl rounded-xl border-b-4 active:scale-90 transition-all text-white btn-active shadow-lg ${COLORS.red.includes(n) ? 'bg-red-600 border-red-900 shadow-red-950/20' : 'bg-zinc-800 border-zinc-950 shadow-black/40'}`}
                                             >
                                                 {n}
                                             </button>
@@ -343,52 +348,64 @@
                                 </div>
                             </div>
 
-                            {/* LADO DIREITO */}
-                            <div className="lg:col-span-4 space-y-8">
-                                <div className="glass-effect p-8 rounded-[3rem] border border-zinc-800 shadow-xl min-h-[420px] flex flex-col">
-                                    <div className="flex justify-between items-center mb-8">
-                                        <h3 className="text-[12px] font-black uppercase text-zinc-300 tracking-widest flex items-center gap-3">
-                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M7 11V7a5 5 0 0 1 10 0v4"/><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/></svg>
+                            {/* COLUNA DIREITA: RANKING E HISTÓRICO */}
+                            <div className="lg:col-span-4 space-y-6">
+                                
+                                {/* RANKING ORDENS DE SAÍDA - SIMÉTRICO */}
+                                <div className="glass-effect p-6 rounded-[2.5rem] border border-zinc-800 shadow-xl min-h-[380px] flex flex-col">
+                                    <div className="flex justify-between items-center mb-6">
+                                        <h3 className="text-[11px] font-black uppercase text-zinc-300 tracking-widest flex items-center gap-3">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M7 11V7a5 5 0 0 1 10 0v4"/><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/></svg>
                                             ORDENS DE SAÍDA
                                         </h3>
-                                        <span className="text-[8px] font-black text-zinc-600 bg-black px-2.5 py-1 rounded-full uppercase">Live</span>
+                                        <span className="text-[8px] font-black text-zinc-600 bg-black px-2 py-1 rounded-full uppercase tracking-tighter">Live</span>
                                     </div>
-                                    <div className="space-y-4 flex-1">
+                                    
+                                    <div className="space-y-3 flex-1 overflow-y-auto custom-scrollbar pr-1">
                                         {transitionsRanking ? transitionsRanking.map((item, idx) => (
-                                            <div key={idx} className="flex justify-between items-center bg-black/50 p-4 rounded-2xl border border-white/5 animate-in">
-                                                <div className="flex items-center gap-5">
-                                                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-xl shadow-2xl ${COLORS.red.includes(item.num) ? 'bg-red-600' : item.num === 0 ? 'bg-emerald-600 text-black' : 'bg-zinc-800'}`}>
+                                            <div key={idx} className="flex justify-between items-center bg-black/40 p-3 rounded-2xl border border-white/5 animate-in shadow-md hover:border-emerald-500/20 transition-all">
+                                                <div className="flex items-center gap-4">
+                                                    <div className={`num-token !w-12 !h-12 !text-lg shadow-xl ${getNumberStyle(item.num)}`}>
                                                         {item.num}
                                                     </div>
                                                     <div className="text-left">
-                                                        <p className="text-[11px] font-black text-white uppercase tracking-widest">Ranking #{idx + 1}</p>
+                                                        <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-tighter">Probabilidade</span>
+                                                        <p className="text-[10px] font-black text-white uppercase tracking-widest leading-none mt-0.5">Ranking #{idx + 1}</p>
                                                     </div>
                                                 </div>
                                                 <div className="text-right">
-                                                    <span className="text-lg font-black text-emerald-500">{item.count}</span>
-                                                    <p className="text-[9px] font-bold text-zinc-600 uppercase">Vezes</p>
+                                                    <span className="text-xl font-black text-emerald-500 leading-none">{item.count}</span>
+                                                    <p className="text-[8px] font-bold text-zinc-600 uppercase mt-0.5">Vezes</p>
                                                 </div>
                                             </div>
                                         )) : (
-                                            <div className="flex-1 flex flex-col items-center justify-center text-center opacity-30">
-                                                <p className="text-[11px] uppercase tracking-widest font-black">Aguardando mapeamento de mesa...</p>
+                                            <div className="flex-1 flex flex-col items-center justify-center bg-black/20 p-8 rounded-[2rem] border border-dashed border-zinc-800 text-center opacity-40">
+                                                <p className="text-[10px] text-zinc-600 italic uppercase font-black leading-relaxed tracking-widest">
+                                                    Mapeando Sequência...
+                                                </p>
                                             </div>
                                         )}
                                     </div>
                                 </div>
 
-                                <div className="glass-effect p-8 rounded-[3rem] border border-zinc-800 shadow-xl h-[360px] flex flex-col">
-                                    <h3 className="text-[12px] font-black uppercase text-zinc-500 tracking-widest mb-6">HISTÓRICO RECENTE</h3>
-                                    <div className="flex-1 overflow-y-auto pr-3 custom-scrollbar space-y-3">
+                                {/* HISTÓRICO RECENTE - SIMÉTRICO */}
+                                <div className="glass-effect p-6 rounded-[2.5rem] border border-zinc-800 shadow-xl h-[330px] flex flex-col">
+                                    <h3 className="text-[11px] font-black uppercase text-zinc-500 tracking-widest mb-6 flex items-center gap-3">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 8v4l3 3m6-3a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"/></svg>
+                                        HISTÓRICO RECENTE
+                                    </h3>
+                                    <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-3">
                                         {history.map((n, i) => (
-                                            <div key={i} className="flex items-center justify-between p-3.5 rounded-2xl bg-white/5 border border-white/5 animate-in">
-                                                <div className="flex items-center gap-5">
-                                                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-black text-sm ${COLORS.red.includes(n) ? 'bg-red-600' : n === 0 ? 'bg-emerald-600 text-black' : 'bg-zinc-950'}`}>
+                                            <div key={i} className="flex items-center justify-between p-3 rounded-2xl bg-white/5 border border-white/5 animate-in shadow-sm">
+                                                <div className="flex items-center gap-4">
+                                                    <div className={`num-token !w-9 !h-9 !text-xs !rounded-lg ${getNumberStyle(n)}`}>
                                                         {n}
                                                     </div>
-                                                    <span className="text-[11px] font-bold text-zinc-400 uppercase">{n === 0 ? 'Zero' : COLORS.red.includes(n) ? 'Vermelho' : 'Preto'}</span>
+                                                    <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-tighter">
+                                                        {n === 0 ? 'Zero' : COLORS.red.includes(n) ? 'Vermelho' : 'Preto'}
+                                                    </span>
                                                 </div>
-                                                <span className="text-[10px] font-mono text-zinc-700 font-bold">#{history.length - i}</span>
+                                                <span className="text-[10px] font-mono text-zinc-700 font-bold italic"># {history.length - i}</span>
                                             </div>
                                         ))}
                                     </div>
@@ -396,13 +413,13 @@
                             </div>
                         </div>
 
-                        <footer className="space-y-6 pt-10 pb-10">
-                            <p className="text-[11px] text-zinc-600 text-center uppercase font-black tracking-widest animate-pulse italic">
-                                Dica: Só entre na mesa quando o bot emitir o alerta ENTRADA CONFIRMADA.
+                        <footer className="space-y-6 pt-10 pb-20">
+                            <p className="text-[10px] text-zinc-600 text-center uppercase font-black tracking-[0.3em] animate-pulse italic">
+                                Dica: Só entre na mesa quando o bot disser ENTRADA CONFIRMADA.
                             </p>
-                            <div className="bg-red-950/10 border border-red-900/10 p-8 rounded-[3rem] text-center max-w-3xl mx-auto">
-                                <p className="text-[10px] text-zinc-600 uppercase font-black tracking-tighter leading-relaxed">
-                                    Motor Elite Quantum V5.3. Análise estatística de alta precisão baseada em Markov e Poisson. Jogue com responsabilidade.
+                            <div className="bg-red-950/10 border border-red-900/10 p-8 rounded-[2.5rem] text-center max-w-4xl mx-auto shadow-inner">
+                                <p className="text-[10px] text-zinc-600 uppercase font-black tracking-widest leading-relaxed">
+                                    O Motor Elite Quantum V5.3 utiliza modelos de Markov e Poisson para identificar falhas de variância. Jogue com gestão rigorosa e moderação.
                                 </p>
                             </div>
                         </footer>

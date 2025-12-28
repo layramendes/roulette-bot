@@ -72,7 +72,7 @@
         const App = () => {
             const [user, setUser] = useState(null);
             const [history, setHistory] = useState([]);
-            const [bankroll, setBankroll] = useState(500);
+            const [bankroll, setBankroll] = useState(100); // Banca iniciada em 100 Reais
             const [signal, setSignal] = useState(null);
             const [db, setDb] = useState(null);
             const [initialized, setInitialized] = useState(false);
@@ -242,7 +242,7 @@
                             <div className="flex gap-4 w-full md:w-auto">
                                 <div className="flex-1 md:flex-none bg-black/40 px-5 py-3 rounded-2xl border border-zinc-800 text-center">
                                     <p className="text-[9px] text-zinc-500 font-bold uppercase">Banca</p>
-                                    <p className="text-sm font-black text-white">€ {bankroll.toFixed(2)}</p>
+                                    <p className="text-sm font-black text-white">R$ {bankroll.toFixed(2)}</p>
                                 </div>
                                 <div className="flex-1 md:flex-none bg-black/40 px-5 py-3 rounded-2xl border border-zinc-800 text-center">
                                     <p className="text-[9px] text-zinc-500 font-bold uppercase">Sessão</p>
@@ -273,7 +273,7 @@
                                                     {signal.numbers && signal.numbers.map((n, i) => (
                                                         <div key={`${n}-${i}`} className={`h-14 rounded-2xl flex flex-col items-center justify-center border-2 border-white/5 shadow-xl transition-all hover:scale-110 active:scale-90 ${COLORS.red.includes(n) ? 'bg-red-600' : n === 0 ? 'bg-emerald-600' : 'bg-zinc-950'}`}>
                                                             <span className="text-xl font-black">{n}</span>
-                                                            <span className="text-[7px] opacity-40 font-bold">€ 1.00</span>
+                                                            <span className="text-[7px] opacity-40 font-bold">R$ 1.00</span>
                                                         </div>
                                                     ))}
                                                 </div>

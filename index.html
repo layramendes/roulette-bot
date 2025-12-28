@@ -1,321 +1,275 @@
-<!DOCTYPE html>
-<html lang="pt-pt">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Quantum Roulette V4 - Pro AI</title>
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+
+// --- CONFIGURAÇÃO E CONSTANTES ---
+const firebaseConfig = {
+  apiKey: "AIzaSyCUcHQrnU-2312pAFiPzH_35SO3gQ6Wsd4",
+  authDomain: "meubotroleta.firebaseapp.com",
+  projectId: "meubotroleta",
+  storageBucket: "meubotroleta.firebasestorage.app",
+  messagingSenderId: "22051928464",
+  appId: "1:22051928464:web:b58b2604a9b677942adb15"
+};
+
+const WHEEL_ORDER = [0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26];
+
+const SECTORS = {
+  voisins: [22, 18, 29, 7, 28, 12, 35, 3, 26, 0, 32, 15, 19, 4, 21, 2, 25],
+  tiers: [27, 13, 36, 11, 30, 8, 23, 10, 5, 24, 16, 33],
+  orphans: [1, 20, 14, 31, 9, 17, 34, 6]
+};
+
+const COLORS = {
+  red: [1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36],
+  black: [2, 4, 6, 8, 10, 11, 13, 15, 17, 20, 22, 24, 26, 28, 29, 31, 33, 35],
+  green: [0]
+};
+
+// --- ÍCONES SVG (EVITA DEPENDÊNCIAS EXTERNAS) ---
+const IconTarget = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>;
+const IconLock = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>;
+const IconZap = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>;
+const IconBrain = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9.5 2A5 5 0 0 1 12 7.33A5 5 0 0 1 14.5 2"/><path d="M12 7.33V22"/><path d="M17 13a5 5 0 1 1-5-5"/><path d="M7 13a5 5 0 1 0 5-5"/></svg>;
+
+const App = () => {
+  const [user, setUser] = useState(null);
+  const [history, setHistory] = useState([]);
+  const [signal, setSignal] = useState(null);
+  const [isReady, setIsReady] = useState(false);
+  const [scanning, setScanning] = useState(true);
+  const [bankroll, setBankroll] = useState(100);
+
+  // Inicialização do Firebase
+  useEffect(() => {
+    if (!window.firebase.apps.length) {
+      window.firebase.initializeApp(firebaseConfig);
+    }
+    const unsub = window.firebase.auth().onAuthStateChanged((u) => {
+      if (!u) {
+        window.firebase.auth().signInAnonymously();
+      } else {
+        setUser(u);
+        setIsReady(true);
+      }
+    });
+    return () => unsub();
+  }, []);
+
+  // Listener de Dados em Tempo Real
+  useEffect(() => {
+    if (!user || !isReady) return;
+    const db = window.firebase.firestore();
+    const unsub = db.collection('artifacts').doc('roulette-v5').collection('users').doc(user.uid).collection('spins')
+      .orderBy('timestamp', 'desc').limit(25)
+      .onSnapshot(snap => {
+        const data = snap.docs.map(d => parseInt(d.data().number)).filter(n => !isNaN(n));
+        setHistory(data);
+        analyzeData(data);
+      });
+    return () => unsub();
+  }, [user, isReady]);
+
+  // --- LÓGICA DE ALTA ASSERTIVIDADE (GATILHOS) ---
+  const analyzeData = useCallback((nums) => {
+    if (nums.length < 8) {
+      setScanning(true);
+      setSignal(null);
+      return;
+    }
+
+    const last = nums[0];
+    const recent = nums.slice(0, 10);
     
-    <!-- Bibliotecas Core (Carregamento Obrigatório) -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    
-    <!-- Firebase SDK Compat (Ultra-estável para Single File) -->
-    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+    // GATILHO 1: QUEBRA DE COR (5 Seguidos) -> Entrada Confirmada para Inversão
+    const last5Colors = nums.slice(0, 5).map(n => COLORS.red.includes(n) ? 'R' : 'B');
+    if (last5Colors.every(c => c === 'R') || last5Colors.every(c => c === 'B')) {
+      const targetSector = last5Colors[0] === 'R' ? SECTORS.tiers : SECTORS.voisins; // Se muito vermelho, busca zona preta predominante
+      triggerSignal("INVERSÃO DE TENDÊNCIA", targetSector.slice(0, 9), 94);
+      return;
+    }
 
-    <style>
-        body { background-color: #050507; color: #f4f4f5; font-family: ui-sans-serif, system-ui, sans-serif; -webkit-tap-highlight-color: transparent; margin: 0; overflow-x: hidden; }
-        .no-scrollbar::-webkit-scrollbar { display: none; }
-        @keyframes fade-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        .animate-in { animation: fade-in 0.4s ease-out forwards; }
-        .loading-ring { width: 44px; height: 44px; border: 4px solid #10b98120; border-top-color: #10b981; border-radius: 50%; animation: spin 1s linear infinite; }
-        @keyframes spin { to { transform: rotate(360deg); } }
-        .btn-active:active { transform: scale(0.96); transition: 0.1s; }
-    </style>
-</head>
-<body>
-    <div id="root"></div>
+    // GATILHO 2: CLUSTER DE SETOR (3 números no mesmo setor físico nos últimos 6)
+    const checkSectorCluster = (sector) => nums.slice(0, 6).filter(n => sector.includes(n)).length >= 3;
+    if (checkSectorCluster(SECTORS.voisins)) {
+        triggerSignal("FORÇA VOISINS", SECTORS.voisins.slice(4, 13), 89);
+        return;
+    }
+    if (checkSectorCluster(SECTORS.tiers)) {
+        triggerSignal("FORÇA TIERS", SECTORS.tiers.slice(2, 10), 91);
+        return;
+    }
 
-    <script type="text/babel">
-        const { useState, useEffect, useCallback, useMemo } = React;
+    // GATILHO 3: REPETIÇÃO DE VIZINHOS (Se um número repete num raio de 3 casas)
+    const idx = WHEEL_ORDER.indexOf(last);
+    const neighbors = [
+        WHEEL_ORDER[(idx - 1 + 37) % 37],
+        WHEEL_ORDER[(idx + 1) % 37]
+    ];
+    if (nums.slice(1, 8).some(n => neighbors.includes(n))) {
+        // Padrão de vizinhos repetindo - sinal de "Dealer Viciado"
+        const fullNeighbors = [];
+        for(let i = -4; i <= 4; i++) fullNeighbors.push(WHEEL_ORDER[(idx + i + 37) % 37]);
+        triggerSignal("PADRÃO DE REPETIÇÃO", fullNeighbors, 96);
+        return;
+    }
 
-        // --- Componentes de Ícones Internos para evitar NotFoundError (Lucide replacement) ---
-        const IconCPU = ({ className }) => (
-            <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="16" height="16" x="4" y="4" rx="2"/><rect width="6" height="6" x="9" y="9" rx="1"/><path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M2 9h2"/><path d="M20 15h2"/><path d="M20 9h2"/><path d="M9 2v2"/><path d="M9 20v2"/></svg>
-        );
-        const IconActivity = ({ className }) => (
-            <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
-        );
-        const IconTrendingUp = ({ className }) => (
-            <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
-        );
-        const IconHash = ({ className }) => (
-            <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/></svg>
-        );
-        const IconRefresh = ({ className }) => (
-            <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></svg>
-        );
-        const IconAlert = ({ className }) => (
-            <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-        );
+    setScanning(true);
+    setSignal(null);
+  }, []);
 
-        const firebaseConfig = {
-            apiKey: "AIzaSyCUcHQrnU-2312pAFiPzH_35SO3gQ6Wsd4",
-            authDomain: "meubotroleta.firebaseapp.com",
-            projectId: "meubotroleta",
-            storageBucket: "meubotroleta.firebasestorage.app",
-            messagingSenderId: "22051928464",
-            appId: "1:22051928464:web:b58b2604a9b677942adb15"
-        };
+  const triggerSignal = (type, numbers, confidence) => {
+    setScanning(false);
+    setSignal({
+      type,
+      numbers: [...new Set(numbers)], // Remove duplicados
+      confidence,
+      validUntil: Date.now() + 60000 // Válido por 1 minuto
+    });
+  };
 
-        const WHEEL_ORDER = [0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26];
-        const COLORS = {
-            red: [1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36],
-            black: [2, 4, 6, 8, 10, 11, 13, 15, 17, 20, 22, 24, 26, 28, 29, 31, 33, 35]
-        };
+  const addSpin = async (n) => {
+    if (!user) return;
+    const db = window.firebase.firestore();
+    await db.collection('artifacts').doc('roulette-v5').collection('users').doc(user.uid).collection('spins').add({
+      number: parseInt(n),
+      timestamp: window.firebase.firestore.FieldValue.serverTimestamp()
+    });
+  };
 
-        const App = () => {
-            const [user, setUser] = useState(null);
-            const [history, setHistory] = useState([]);
-            const [signal, setSignal] = useState(null);
-            const [status, setStatus] = useState('loading'); // 'loading', 'ready', 'error'
-            const [errorMsg, setErrorMsg] = useState(null);
+  if (!isReady) return (
+    <div className="min-h-screen flex flex-col items-center justify-center bg-black gap-4">
+      <div className="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+      <p className="text-[10px] font-black text-emerald-500 uppercase tracking-widest animate-pulse">Quantum Kernel v5.0</p>
+    </div>
+  );
 
-            // 1. Inicialização Centralizada
-            useEffect(() => {
-                const initApp = async () => {
-                    try {
-                        if (!firebase.apps.length) {
-                            firebase.initializeApp(firebaseConfig);
-                        }
-                        const auth = firebase.auth();
-                        const res = await auth.signInAnonymously();
-                        setUser(res.user);
-                        setStatus('ready');
-                    } catch (e) {
-                        setStatus('error');
-                        setErrorMsg(e.message);
-                    }
-                };
-                initApp();
-            }, []);
+  return (
+    <div className="min-h-screen bg-[#050507] text-white p-4 font-sans selection:bg-emerald-500/30">
+      <div className="max-w-md mx-auto space-y-6 pt-4">
+        
+        {/* HUD de Gestão */}
+        <div className="flex justify-between items-center bg-zinc-900/40 p-5 rounded-[2rem] border border-zinc-800 backdrop-blur-md">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-emerald-600 rounded-xl flex items-center justify-center shadow-lg shadow-emerald-900/20">
+              <IconBrain />
+            </div>
+            <div>
+              <h1 className="text-sm font-black tracking-tight uppercase leading-none">Quantum Pro <span className="text-emerald-500">V5</span></h1>
+              <p className="text-[9px] text-zinc-500 font-bold uppercase mt-1 tracking-widest">IA PREDITIVA ATIVA</p>
+            </div>
+          </div>
+          <div className="text-right">
+            <p className="text-[8px] text-zinc-500 font-bold uppercase">Banca Sugerida</p>
+            <p className="text-sm font-black text-emerald-500">R$ {bankroll.toFixed(2)}</p>
+          </div>
+        </div>
 
-            // 3. Listener do Banco de Dados
-            useEffect(() => {
-                if (!user || status !== 'ready') return;
-
-                const db = firebase.firestore();
-                const q = db.collection('artifacts')
-                          .doc('roulette-v4-exact')
-                          .collection('users')
-                          .doc(user.uid)
-                          .collection('spins')
-                          .orderBy('timestamp', 'desc')
-                          .limit(20);
-
-                const unsub = q.onSnapshot((snap) => {
-                    const data = snap.docs
-                        .map(d => parseInt(d.data()?.number))
-                        .filter(n => !isNaN(n));
-                    
-                    setHistory(data);
-                    if (data.length >= 5) processSignals(data);
-                    else setSignal(null);
-                }, (err) => {
-                    if (err.code === 'permission-denied') {
-                        setStatus('error');
-                        setErrorMsg("Acesso Negado: Publique as Regras no Firebase.");
-                    }
-                });
-
-                return () => unsub();
-            }, [user, status]);
-
-            const getNeighbors = (target, dist = 2) => {
-                const idx = WHEEL_ORDER.indexOf(parseInt(target));
-                if (idx === -1) return [];
-                const res = [];
-                for (let i = -dist; i <= dist; i++) {
-                    res.push(WHEEL_ORDER[(idx + i + 37) % 37]);
-                }
-                return res;
-            };
-
-            const processSignals = (nums) => {
-                const last = nums[0];
-                const last5 = nums.slice(0, 5);
-                let target = [];
-                let type = "ANÁLISE";
-                let conf = 85;
-
-                const counts = {};
-                nums.slice(0, 15).forEach(n => counts[n] = (counts[n] || 0) + 1);
-                const hotEntries = Object.entries(counts).sort((a,b) => b[1]-a[1]);
-                const hot = hotEntries.length > 0 ? hotEntries[0] : null;
-
-                if (hot && hot[1] >= 2) {
-                    target = getNeighbors(hot[0], 3);
-                    type = "CLUSTER DE FREQUÊNCIA";
-                    conf = 92;
-                } else if (last5.filter(n => COLORS.red.includes(n)).length >= 4) {
-                    target = [2, 4, 6, 11, 13, 15, 17, 20];
-                    type = "INVERSÃO DE ZONA";
-                    conf = 88;
-                } else {
-                    const idxInWheel = WHEEL_ORDER.indexOf(last);
-                    const oppositeIdx = idxInWheel !== -1 ? (idxInWheel + 18) % 37 : 0;
-                    target = getNeighbors(WHEEL_ORDER[oppositeIdx], 2);
-                    type = "OPOSIÇÃO FÍSICA";
-                    conf = 85;
-                }
-
-                if (target.length > 0) {
-                    setSignal({ numbers: target, type, confidence: conf, main: target[Math.floor(target.length/2)] });
-                }
-            };
-
-            const addNumber = async (n) => {
-                if (!user) return;
-                const db = firebase.firestore();
-                try {
-                    await db.collection('artifacts')
-                            .doc('roulette-v4-exact')
-                            .collection('users')
-                            .doc(user.uid)
-                            .collection('spins')
-                            .add({
-                                number: parseInt(n),
-                                timestamp: firebase.firestore.FieldValue.serverTimestamp()
-                            });
-                } catch (e) { console.error("Erro ao gravar."); }
-            };
-
-            // VISTA 1: CARREGAMENTO
-            if (status === 'loading') {
-                return (
-                    <div className="min-h-screen flex flex-col items-center justify-center bg-[#050507]">
-                        <div className="loading-ring"></div>
-                        <p className="text-[10px] font-black text-emerald-500/50 uppercase tracking-[0.5em] mt-8 animate-pulse text-center px-6">
-                            Quantum Kernel v4.7<br/>Sincronizando Módulos...
-                        </p>
-                    </div>
-                );
-            }
-
-            // VISTA 2: ERRO
-            if (status === 'error') {
-                return (
-                    <div className="min-h-screen flex items-center justify-center bg-[#050507] p-8 text-center">
-                        <div className="bg-red-500/10 border border-red-500/20 p-8 rounded-[2rem] max-w-sm w-full">
-                            <IconAlert className="w-12 h-12 text-red-500 mx-auto mb-4" />
-                            <h2 className="text-xl font-black text-white uppercase mb-2">Erro de Kernel</h2>
-                            <p className="text-zinc-500 text-xs mb-6 leading-relaxed">{errorMsg}</p>
-                            <button onClick={() => location.reload()} className="w-full bg-zinc-800 py-3 rounded-xl font-bold text-white text-xs uppercase tracking-widest">Tentar Reiniciar</button>
-                        </div>
-                    </div>
-                );
-            }
-
-            // VISTA 3: INTERFACE PRINCIPAL
-            return (
-                <div className="min-h-screen p-4 lg:p-10 pb-24 bg-[#050507] animate-in">
-                    <div className="max-w-4xl mx-auto space-y-6">
-                        
-                        {/* Header HUD */}
-                        <header className="flex justify-between items-center bg-zinc-900/50 p-5 rounded-[2rem] border border-zinc-800">
-                            <div className="flex items-center gap-4">
-                                <div className="p-3 bg-emerald-600 rounded-2xl shadow-lg">
-                                    <IconCPU className="w-5 h-5 text-white" />
-                                </div>
-                                <div>
-                                    <h1 className="text-lg font-black tracking-tighter uppercase text-white leading-none">Quantum <span className="text-emerald-500">V4 Pro</span></h1>
-                                    <div className="flex items-center gap-2 text-[8px] text-emerald-500 font-bold uppercase tracking-widest mt-1">
-                                        <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-ping"></div>
-                                        Kernel Ativo
-                                    </div>
-                                </div>
-                            </div>
-                            <div className="bg-black/40 px-5 py-3 rounded-2xl border border-zinc-800 text-center">
-                                <p className="text-[8px] text-zinc-500 font-bold uppercase mb-0.5">Banca</p>
-                                <p className="text-xs font-black text-white italic">R$ 100,00</p>
-                            </div>
-                        </header>
-
-                        {/* Sinal Ativo */}
-                        <div className={`p-8 rounded-[2.5rem] border-2 transition-all duration-700 ${signal ? 'bg-emerald-600/5 border-emerald-500/50 shadow-2xl' : 'bg-zinc-900/30 border-zinc-800'}`}>
-                            {signal ? (
-                                <div className="space-y-6 animate-in">
-                                    <div className="flex justify-between items-center">
-                                        <span className="bg-emerald-600 text-white text-[9px] font-black px-3 py-1 rounded-full uppercase">Sinal Ativo</span>
-                                        <div className="flex items-center gap-2 text-emerald-500 font-bold text-xs uppercase">
-                                            <IconTrendingUp className="w-3.5 h-3.5" /> {signal.confidence}% Precisão
-                                        </div>
-                                    </div>
-                                    <div className="space-y-4">
-                                        <h3 className="text-[10px] text-zinc-500 font-black uppercase tracking-widest">Entrada em Plenos:</h3>
-                                        <div className="grid grid-cols-4 sm:grid-cols-8 gap-2">
-                                            {signal.numbers.map((n, i) => (
-                                                <div key={`s-${n}-${i}`} className={`h-12 rounded-xl flex flex-col items-center justify-center border-2 border-white/5 shadow-lg ${COLORS.red.includes(n) ? 'bg-red-600' : n === 0 ? 'bg-emerald-600' : 'bg-zinc-950'}`}>
-                                                    <span className="text-lg font-black text-white">{n}</span>
-                                                    <span className="text-[7px] opacity-40 font-bold text-white uppercase">R$ 1.00</span>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-4 pt-4 border-t border-white/5 text-center">
-                                        <div className="bg-black/60 p-3 rounded-2xl border border-white/5">
-                                            <p className="text-[8px] text-zinc-500 font-bold uppercase mb-1">Estratégia</p>
-                                            <p className="text-[10px] font-black text-zinc-200 uppercase">{signal.type}</p>
-                                        </div>
-                                        <div className="bg-black/60 p-3 rounded-2xl border border-white/5">
-                                            <p className="text-[8px] text-zinc-500 font-bold uppercase mb-1">Pivot Alvo</p>
-                                            <p className="text-[10px] font-black text-emerald-500 uppercase">Nº {signal.main}</p>
-                                        </div>
-                                    </div>
-                                </div>
-                            ) : (
-                                <div className="py-20 text-center space-y-4 opacity-20 flex flex-col items-center">
-                                    <IconRefresh className="w-10 h-10 animate-spin text-zinc-400" />
-                                    <p className="text-[10px] font-black uppercase tracking-[0.4em] text-zinc-400 text-center">Sincronizando Tendências<br/>da Mesa Brasileira...</p>
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Teclado Profissional */}
-                        <div className="bg-zinc-900/50 border border-zinc-800 p-6 rounded-[2.5rem] shadow-2xl">
-                            <div className="grid grid-cols-12 gap-1.5">
-                                <button onClick={() => addNumber(0)} className="col-span-12 h-14 bg-emerald-600 hover:bg-emerald-500 rounded-xl font-black text-xl border-b-4 border-emerald-800 active:scale-95 transition-all text-white mb-2 btn-active">0</button>
-                                {[3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36, 2, 5, 8, 11, 14, 17, 20, 23, 26, 29, 32, 35, 1, 4, 7, 10, 13, 16, 19, 22, 25, 28, 31, 34].map(n => (
-                                    <button 
-                                        key={`btn-${n}`} 
-                                        onClick={() => addNumber(n)} 
-                                        className={`col-span-2 md:col-span-1 h-12 flex items-center justify-center font-black text-sm rounded-lg border-b-4 active:scale-95 transition-all text-white btn-active ${COLORS.red.includes(n) ? 'bg-red-600 border-red-800' : 'bg-zinc-800 border-zinc-950'}`}
-                                    >
-                                        {n}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-
-                        {/* Histórico Real-time */}
-                        <div className="bg-zinc-900/50 border border-zinc-800 rounded-[2rem] p-5">
-                            <h3 className="text-[9px] font-black text-zinc-500 uppercase tracking-widest mb-4 flex items-center gap-2 px-2">
-                                <IconHash className="w-3.5 h-3.5 text-emerald-500" /> Histórico Recente
-                            </h3>
-                            <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar px-2">
-                                {history.map((n, i) => (
-                                    <div key={`hist-${i}-${n}`} className={`w-10 h-10 shrink-0 rounded-xl flex items-center justify-center font-black text-xs border border-white/5 animate-in ${COLORS.red.includes(n) ? 'bg-red-600 text-white' : n === 0 ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-300'}`}>
-                                        {n}
-                                    </div>
-                                ))}
-                                {history.length === 0 && (
-                                    <div className="flex items-center justify-center w-full py-4 text-[9px] text-zinc-600 uppercase font-black tracking-widest italic">
-                                        Aguardando telemetria...
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    </div>
+        {/* STATUS DO BOT (AGORA COM GATILHO CLARO) */}
+        <div className={`relative overflow-hidden p-8 rounded-[2.5rem] border-2 transition-all duration-500 min-h-[320px] flex flex-col items-center justify-center ${!scanning ? 'bg-emerald-600/5 border-emerald-500 shadow-[0_0_60px_-15px_rgba(16,185,129,0.3)]' : 'bg-zinc-900/20 border-zinc-800'}`}>
+          
+          {scanning ? (
+            <div className="text-center space-y-6 animate-in">
+              <div className="relative">
+                <div className="w-20 h-20 border-2 border-zinc-800 rounded-full mx-auto flex items-center justify-center">
+                   <div className="w-12 h-12 border-2 border-zinc-700 border-t-emerald-500 rounded-full animate-spin"></div>
                 </div>
-            );
-        };
+                <div className="absolute inset-0 flex items-center justify-center">
+                   <IconTarget />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <h2 className="text-xs font-black uppercase tracking-[0.3em] text-zinc-400">Escaneando Ciclos...</h2>
+                <p className="text-[10px] text-zinc-600 max-w-[200px] mx-auto leading-relaxed">
+                  Aguardando um padrão de alta probabilidade. Não aposte agora.
+                </p>
+              </div>
+              <div className="pt-4 flex gap-2 justify-center">
+                 <span className="text-[8px] bg-zinc-800/50 px-3 py-1 rounded-full text-zinc-500 font-bold uppercase">Mín. 8 Spins</span>
+                 <span className="text-[8px] bg-zinc-800/50 px-3 py-1 rounded-full text-zinc-500 font-bold uppercase">Setores Físicos</span>
+              </div>
+            </div>
+          ) : (
+            <div className="w-full space-y-8 animate-in text-center">
+               <div className="flex justify-between items-center w-full px-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 bg-emerald-500 rounded-full animate-ping"></div>
+                    <span className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">Entrada Confirmada</span>
+                  </div>
+                  <span className="text-[10px] font-bold text-zinc-400 uppercase">{signal.confidence}% Accuracy</span>
+               </div>
 
-        // Renderização Final
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
-    </script>
-</body>
-</html>
+               <div className="space-y-4">
+                  <h3 className="text-[11px] font-black uppercase tracking-widest text-zinc-300">Apostar em Plenos:</h3>
+                  <div className="grid grid-cols-4 sm:grid-cols-5 gap-3">
+                    {signal.numbers.map((n, i) => (
+                      <div key={i} className={`h-12 rounded-xl flex flex-col items-center justify-center border-2 border-white/5 shadow-xl transition-all scale-100 hover:scale-105 ${COLORS.red.includes(n) ? 'bg-red-600' : n === 0 ? 'bg-emerald-600' : 'bg-zinc-950'}`}>
+                        <span className="text-xl font-black text-white">{n}</span>
+                        <span className="text-[7px] opacity-40 font-bold">R$ 1.00</span>
+                      </div>
+                    ))}
+                  </div>
+               </div>
+
+               <div className="grid grid-cols-2 gap-3 pt-4 border-t border-white/5">
+                  <div className="bg-black/40 p-4 rounded-2xl border border-white/5">
+                    <p className="text-[8px] text-zinc-500 font-bold uppercase mb-1">Gatilho de IA</p>
+                    <p className="text-[10px] font-black text-emerald-500 uppercase">{signal.type}</p>
+                  </div>
+                  <div className="bg-black/40 p-4 rounded-2xl border border-white/5">
+                    <p className="text-[8px] text-zinc-500 font-bold uppercase mb-1">Validade</p>
+                    <p className="text-[10px] font-black text-white uppercase">1 SPIN</p>
+                  </div>
+               </div>
+            </div>
+          )}
+        </div>
+
+        {/* INPUT DE RESULTADOS */}
+        <div className="bg-zinc-900/40 p-6 rounded-[2.5rem] border border-zinc-800 shadow-2xl">
+          <div className="flex justify-between items-center mb-6 px-2">
+             <h3 className="text-[10px] font-black uppercase text-zinc-500 tracking-widest flex items-center gap-2">
+               <IconZap /> Inserir Resultado
+             </h3>
+             <span className="text-[9px] font-bold text-zinc-600 uppercase">Brasileira Ao Vivo</span>
+          </div>
+          <div className="grid grid-cols-12 gap-1.5">
+            <button onClick={() => addSpin(0)} className="col-span-12 h-12 bg-emerald-600/20 text-emerald-500 hover:bg-emerald-600 hover:text-white rounded-xl font-black text-lg border border-emerald-500/30 transition-all mb-2 btn-active">0</button>
+            {[3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36, 2, 5, 8, 11, 14, 17, 20, 23, 26, 29, 32, 35, 1, 4, 7, 10, 13, 16, 19, 22, 25, 28, 31, 34].map(n => (
+              <button 
+                key={n} 
+                onClick={() => addSpin(n)} 
+                className={`col-span-2 h-10 flex items-center justify-center font-black text-sm rounded-lg border-b-2 active:scale-90 transition-all text-white btn-active ${COLORS.red.includes(n) ? 'bg-red-600/80 border-red-900' : 'bg-zinc-800 border-black'}`}
+              >
+                {n}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* HISTÓRICO RECENTE */}
+        <div className="bg-zinc-900/20 p-6 rounded-[2rem] border border-zinc-800/50">
+          <div className="flex items-center gap-2 mb-4 px-1">
+             <IconHash className="w-3.5 h-3.5 text-zinc-500" />
+             <h3 className="text-[9px] font-black uppercase text-zinc-500 tracking-widest">Monitor de Ciclo</h3>
+          </div>
+          <div className="flex gap-2.5 overflow-x-auto pb-2 no-scrollbar">
+            {history.map((n, i) => (
+              <div key={i} className={`w-9 h-9 shrink-0 rounded-xl flex items-center justify-center font-black text-xs border border-white/5 shadow-md animate-in ${COLORS.red.includes(n) ? 'bg-red-600' : n === 0 ? 'bg-emerald-600' : 'bg-zinc-800'} text-white`}>
+                {n}
+              </div>
+            ))}
+            {history.length === 0 && <p className="text-[9px] text-zinc-700 italic font-bold uppercase tracking-widest p-4">Aguardando telemetria...</p>}
+          </div>
+        </div>
+
+        <div className="p-4 bg-emerald-500/5 rounded-2xl border border-emerald-500/10 text-center">
+            <p className="text-[9px] font-bold text-emerald-600/80 uppercase tracking-tighter">
+              Dica: Só entre na mesa quando o bot disser "ENTRADA CONFIRMADA".
+            </p>
+        </div>
+
+      </div>
+    </div>
+  );
+};
+
+export default App;

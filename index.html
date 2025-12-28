@@ -46,6 +46,7 @@ const App = () => {
   const [signal, setSignal] = useState(null);
   const [analysisProgress, setAnalysisProgress] = useState(0);
   const [bankroll] = useState(100);
+  const [status, setStatus] = useState('Analisando Fluxo...');
 
   // 1. Autenticação Segura (Regra 3)
   useEffect(() => {
@@ -65,45 +66,60 @@ const App = () => {
     return () => unsubscribe();
   }, []);
 
-  // 2. Lógica de Sinais de Alta Precisão
+  // 2. Lógica de Sinais Ultra Sensível (V5.3)
   const runAdvancedLogic = useCallback((nums) => {
-    if (!nums || nums.length < 5) {
-      setAnalysisProgress((nums?.length / 5) * 100 || 0);
+    if (!nums || nums.length < 3) {
+      setAnalysisProgress((nums?.length / 3) * 100 || 0);
       setSignal(null);
+      setStatus('Aguardando Mínimo (3 Números)');
       return;
     }
 
     setAnalysisProgress(100);
     const last = nums[0];
     
-    // Inversão de Cor (4 seguidos da mesma cor)
-    const colorStreak = nums.slice(0, 4).map(n => COLORS.red.includes(n) ? 'R' : 'B');
-    if (colorStreak.length === 4 && colorStreak.every(c => c === colorStreak[0])) {
-        const oppositeZone = colorStreak[0] === 'R' ? [2, 4, 6, 11, 13, 17, 20, 22] : [1, 3, 5, 9, 12, 14, 16, 18];
+    // GATILHO 1: Tendência de Cor Emergente (3 seguidos - Mais Rápido)
+    const colorStreak = nums.slice(0, 3).map(n => COLORS.red.includes(n) ? 'R' : 'B');
+    if (colorStreak.length === 3 && colorStreak.every(c => c === colorStreak[0])) {
+        const oppositeZone = colorStreak[0] === 'R' ? [2, 4, 11, 13, 17, 20] : [1, 3, 12, 14, 16, 18];
         return setSignal({
-            type: "REVERSÃO DE COR",
+            type: "TENDÊNCIA EMERGENTE",
             numbers: oppositeZone,
-            confidence: 88,
+            confidence: 75,
             pivot: oppositeZone[0]
         });
     }
 
-    // Repetição de Vizinhos (Raio de 3 casas na roda física)
+    // GATILHO 2: Quebra de Variância (4+ seguidos - Mais Assertivo)
+    const deepStreak = nums.slice(0, 4).map(n => COLORS.red.includes(n) ? 'R' : 'B');
+    if (deepStreak.length === 4 && deepStreak.every(c => c === deepStreak[0])) {
+        const fullZone = deepStreak[0] === 'R' ? [2, 4, 6, 11, 13, 17, 20, 22] : [1, 3, 5, 9, 12, 14, 16, 18];
+        return setSignal({
+            type: "REVERSÃO CONFIRMADA",
+            numbers: fullZone,
+            confidence: 91,
+            pivot: fullZone[0]
+        });
+    }
+
+    // GATILHO 3: Proximidade Física
     const idx = WHEEL_ORDER.indexOf(last);
     if (idx !== -1) {
         const neighbors = [];
-        for(let i = -3; i <= 3; i++) neighbors.push(WHEEL_ORDER[(idx + i + 37) % 37]);
-        const repetitions = nums.slice(1, 6).filter(n => neighbors.includes(n));
-        if (repetitions.length >= 2) {
+        for(let i = -2; i <= 2; i++) neighbors.push(WHEEL_ORDER[(idx + i + 37) % 37]);
+        
+        // Se um vizinho saiu nos últimos 6 spins
+        if (nums.slice(1, 6).some(n => neighbors.includes(n))) {
             return setSignal({
-                type: "ZONA DE IMPACTO",
+                type: "CALOR DE SETOR",
                 numbers: neighbors,
-                confidence: 94,
+                confidence: 85,
                 pivot: last
             });
         }
     }
 
+    setStatus('Rastreador Ativo: Aguardando Gatilho');
     setSignal(null);
   }, []);
 
@@ -130,7 +146,6 @@ const App = () => {
     return () => unsubscribe();
   }, [user, runAdvancedLogic]);
 
-  // Função de Gravação Corrigida para Modular SDK
   const addNumber = async (n) => {
     if (!user) return;
     try {
@@ -148,7 +163,7 @@ const App = () => {
     <div className="min-h-screen bg-black flex items-center justify-center">
       <div className="text-center space-y-4">
         <div className="w-12 h-12 border-4 border-emerald-500/20 border-t-emerald-500 rounded-full animate-spin mx-auto"></div>
-        <p className="text-[10px] font-black text-emerald-500 uppercase tracking-widest animate-pulse">Sincronizando Kernel V5.2</p>
+        <p className="text-[10px] font-black text-emerald-500 uppercase tracking-widest animate-pulse text-center">Iniciando Kernel V5.3</p>
       </div>
     </div>
   );
@@ -164,8 +179,8 @@ const App = () => {
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" /></svg>
             </div>
             <div>
-              <h1 className="text-xs font-black uppercase tracking-tight">Quantum <span className="text-emerald-500 italic">V5.2 Pro</span></h1>
-              <p className="text-[8px] text-zinc-500 font-bold uppercase tracking-widest mt-0.5">ID: {user.uid.substring(0,8)}...</p>
+              <h1 className="text-xs font-black uppercase tracking-tight">Quantum <span className="text-emerald-500 italic">V5.3 Ultra</span></h1>
+              <p className="text-[8px] text-zinc-500 font-bold uppercase tracking-widest mt-0.5">MODO SENSÍVEL ATIVO</p>
             </div>
           </div>
           <div className="text-right">
@@ -175,15 +190,15 @@ const App = () => {
         </div>
 
         {/* MONITOR PRINCIPAL */}
-        <div className={`relative min-h-[360px] p-8 rounded-[2.5rem] border-2 transition-all duration-700 flex flex-col items-center justify-center ${signal ? 'bg-emerald-600/10 border-emerald-500 shadow-[0_0_80px_-20px_rgba(16,185,129,0.4)]' : 'bg-zinc-900/20 border-zinc-800'}`}>
+        <div className={`relative min-h-[360px] p-8 rounded-[2.5rem] border-2 transition-all duration-500 flex flex-col items-center justify-center ${signal ? 'bg-emerald-600/10 border-emerald-500 shadow-[0_0_80px_-20px_rgba(16,185,129,0.4)]' : 'bg-zinc-900/20 border-zinc-800'}`}>
           
           {!signal ? (
-            <div className="text-center space-y-8 animate-in">
+            <div className="text-center space-y-8 animate-in w-full">
               <IconRadar />
               <div className="space-y-4">
                 <div className="space-y-1">
-                  <h2 className="text-[11px] font-black uppercase tracking-[0.4em] text-zinc-400">Analisando Mesa</h2>
-                  <p className="text-[9px] text-zinc-600 font-bold uppercase">Aguardando Padrão de Entrada</p>
+                  <h2 className="text-[11px] font-black uppercase tracking-[0.4em] text-zinc-400">{status}</h2>
+                  <p className="text-[9px] text-zinc-600 font-bold uppercase tracking-widest">Escaneando Micro-Tendências</p>
                 </div>
                 
                 <div className="w-48 h-1 bg-zinc-800/50 mx-auto rounded-full overflow-hidden border border-zinc-800">
@@ -193,30 +208,40 @@ const App = () => {
                   ></div>
                 </div>
                 
-                <p className="text-[9px] text-zinc-500 px-6 leading-relaxed">
-                  {history.length < 5 
-                    ? `Insira mais ${5 - history.length} spins para calibrar a IA.` 
-                    : "Mesa pronta. Aguardando sinal de alta assertividade..."}
-                </p>
+                <div className="flex flex-col gap-2">
+                    <p className="text-[9px] text-zinc-500 px-6 leading-relaxed">
+                    {history.length < 3 
+                        ? `Necessários ${3 - history.length} registros para operar.` 
+                        : "Sincronia OK. Aguardando gatilho imediato..."}
+                    </p>
+                    {history.length >= 3 && (
+                        <div className="flex items-center justify-center gap-1.5 text-emerald-500/40">
+                             <div className="w-1 h-1 bg-emerald-500 rounded-full animate-ping"></div>
+                             <span className="text-[8px] font-black uppercase tracking-widest">IA Processando Biés</span>
+                        </div>
+                    )}
+                </div>
               </div>
             </div>
           ) : (
             <div className="w-full space-y-8 animate-in text-center">
               <div className="space-y-2">
-                <div className="inline-flex items-center gap-2 px-5 py-1.5 bg-emerald-500 text-black rounded-full shadow-lg">
-                  <span className="w-1.5 h-1.5 bg-black rounded-full animate-ping"></span>
-                  <span className="text-[10px] font-black uppercase tracking-widest italic">Entrada Confirmada</span>
+                <div className={`inline-flex items-center gap-2 px-5 py-1.5 rounded-full shadow-lg ${signal.confidence > 80 ? 'bg-emerald-500 text-black' : 'bg-zinc-800 text-emerald-500 border border-emerald-500/30'}`}>
+                  <span className="w-1.5 h-1.5 bg-current rounded-full animate-ping"></span>
+                  <span className="text-[10px] font-black uppercase tracking-widest italic">
+                    {signal.confidence > 80 ? 'Entrada Confirmada' : 'Tendência Detetada'}
+                  </span>
                 </div>
                 <h2 className="text-3xl font-black text-white tracking-tighter uppercase italic">{signal.type}</h2>
               </div>
 
               <div className="space-y-4">
-                <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Apostar em Plenos:</p>
+                <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Cobrir Plenos (R$ 1.00):</p>
                 <div className="grid grid-cols-4 gap-2.5">
                   {signal.numbers.map((n, i) => (
-                    <div key={i} className={`h-12 rounded-xl flex flex-col items-center justify-center border-2 border-white/5 shadow-xl transition-all hover:scale-110 ${COLORS.red.includes(n) ? 'bg-red-600' : n === 0 ? 'bg-emerald-600' : 'bg-zinc-950'}`}>
+                    <div key={i} className={`h-12 rounded-xl flex flex-col items-center justify-center border-2 border-white/5 shadow-xl transition-all active:scale-95 ${COLORS.red.includes(n) ? 'bg-red-600' : n === 0 ? 'bg-emerald-600' : 'bg-zinc-950'}`}>
                       <span className="text-xl font-black text-white">{n}</span>
-                      <span className="text-[7px] opacity-40 font-bold">R$ 1.00</span>
+                      <span className="text-[7px] opacity-40 font-bold uppercase">Aposta</span>
                     </div>
                   ))}
                 </div>
@@ -224,11 +249,11 @@ const App = () => {
 
               <div className="grid grid-cols-2 gap-3 pt-4 border-t border-white/5">
                 <div className="bg-black/40 p-4 rounded-2xl border border-white/5">
-                  <p className="text-[8px] text-zinc-500 font-bold uppercase mb-1">Confiança</p>
+                  <p className="text-[8px] text-zinc-500 font-bold uppercase mb-1">Confiança IA</p>
                   <p className="text-sm font-black text-emerald-500 italic">{signal.confidence}%</p>
                 </div>
                 <div className="bg-black/40 p-4 rounded-2xl border border-white/5">
-                  <p className="text-[8px] text-zinc-500 font-bold uppercase mb-1">Pivot</p>
+                  <p className="text-[8px] text-zinc-500 font-bold uppercase mb-1">Pivot Alvo</p>
                   <p className="text-sm font-black text-white italic">Nº {signal.pivot}</p>
                 </div>
               </div>
@@ -241,9 +266,9 @@ const App = () => {
           <div className="flex justify-between items-center mb-6 px-1">
              <h3 className="text-[10px] font-black uppercase text-zinc-500 tracking-widest flex items-center gap-2">
                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M11 2L3 14h9l-1 8 8-12h-9l1-8z"/></svg>
-               Registrar Spin
+               Terminal de Spin
              </h3>
-             <span className="text-[8px] font-bold text-zinc-600 uppercase bg-black/40 px-3 py-1 rounded-full">Brasileira Live</span>
+             <span className="text-[8px] font-bold text-zinc-600 uppercase bg-black/40 px-3 py-1 rounded-full">Evolution Live</span>
           </div>
           <div className="grid grid-cols-6 gap-2">
             <button onClick={() => addNumber(0)} className="col-span-6 h-12 bg-emerald-600/10 text-emerald-500 hover:bg-emerald-600 hover:text-white rounded-xl font-black text-xl border border-emerald-500/20 transition-all mb-2 active:scale-95">0</button>
@@ -259,16 +284,16 @@ const App = () => {
           </div>
         </div>
 
-        {/* HISTÓRICO */}
+        {/* MONITOR DE TAPE */}
         <div className="bg-zinc-900/20 p-5 rounded-[2rem] border border-zinc-800/50">
-          <h3 className="text-[9px] font-black uppercase text-zinc-500 tracking-widest mb-4 px-1">Monitor de Telemetria</h3>
+          <h3 className="text-[9px] font-black uppercase text-zinc-500 tracking-widest mb-4 px-1">Micro-Telemetria</h3>
           <div className="flex gap-2.5 overflow-x-auto pb-2 no-scrollbar px-1">
             {history.map((n, i) => (
               <div key={i} className={`w-10 h-10 shrink-0 rounded-xl flex items-center justify-center font-black text-xs border border-white/5 shadow-md animate-in ${COLORS.red.includes(n) ? 'bg-red-600' : n === 0 ? 'bg-emerald-600' : 'bg-zinc-800'} text-white`}>
                 {n}
               </div>
             ))}
-            {history.length === 0 && <p className="text-[9px] text-zinc-700 italic font-bold uppercase tracking-widest p-4">Aguardando dados...</p>}
+            {history.length === 0 && <p className="text-[9px] text-zinc-700 italic font-bold uppercase tracking-widest p-4">Inicie a inserção de dados...</p>}
           </div>
         </div>
       </div>

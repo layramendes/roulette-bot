@@ -4,17 +4,27 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Quantum Roulette V4 - Pro AI</title>
-    <!-- Tailwind CSS -->
+    
+    <!-- Fallback de Emergência: Se a tela ficar preta por mais de 5 segundos, mostra erro manual -->
+    <script>
+        window.onerror = function(msg, url, line) {
+            document.body.innerHTML = `<div style="color:white; background:#111; padding:20px; font-family:sans-serif;">
+                <h2 style="color:#ef4444">Erro de Carregamento Crítico</h2>
+                <p>O navegador bloqueou um script necessário.</p>
+                <code style="font-size:10px; color:#888;">${msg} em ${url}:${line}</code>
+                <br><br><button onclick="location.reload()" style="background:#333; color:white; border:none; padding:10px; border-radius:5px;">Recarregar Sistema</button>
+            </div>`;
+        };
+    </script>
+
+    <!-- Bibliotecas Core -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- React & ReactDOM -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <!-- Babel (Transpilador JSX) -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
     
-    <!-- Firebase SDK v11.1.0 (Estável) -->
+    <!-- Firebase SDK v11.1.0 -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-app.js";
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-auth.js";
@@ -37,10 +47,8 @@
                 getFirestore, collection, addDoc, onSnapshot, 
                 serverTimestamp, query, limit, orderBy 
             };
-            console.log("Firebase carregado com sucesso.");
         } catch (e) {
             window.firebaseError = e.message;
-            console.error("Erro Firebase:", e);
         }
     </script>
 
@@ -53,7 +61,14 @@
     </style>
 </head>
 <body>
-    <div id="root"></div>
+    <div id="root">
+        <!-- Tela de Carregamento Inicial (Antes do React) -->
+        <div id="loader" style="min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #050507;">
+            <div style="width: 40px; height: 40px; border: 4px solid #10b98120; border-top-color: #10b981; border-radius: 50%; animation: spin 1s linear infinite;"></div>
+            <p style="color: #666; font-size: 10px; margin-top: 20px; font-weight: 900; letter-spacing: 0.5em; text-transform: uppercase;">Booting Quantum Kernel...</p>
+        </div>
+        <style> @keyframes spin { to { transform: rotate(360deg); } } </style>
+    </div>
 
     <script type="text/babel">
         const { useState, useEffect, useCallback } = React;
@@ -71,39 +86,47 @@
             const [bankroll, setBankroll] = useState(100);
             const [signal, setSignal] = useState(null);
             const [db, setDb] = useState(null);
-            const [status, setStatus] = useState("A iniciar...");
+            const [initialized, setInitialized] = useState(false);
             const [error, setError] = useState(window.firebaseError || null);
 
-            // 1. Inicialização Segura (Polling)
+            // 1. Monitor de Sincronização
             useEffect(() => {
-                const checkFirebase = setInterval(() => {
-                    if (window.FirebaseSDK) {
-                        clearInterval(checkFirebase);
-                        const { app, getAuth, signInAnonymously, onAuthStateChanged, getFirestore } = window.FirebaseSDK;
-                        const auth = getAuth(app);
-                        const dbInstance = getFirestore(app);
-                        setDb(dbInstance);
+                const interval = setInterval(() => {
+                    if (window.FirebaseSDK && window.lucide) {
+                        clearInterval(interval);
+                        try {
+                            const { app, getAuth, signInAnonymously, onAuthStateChanged, getFirestore } = window.FirebaseSDK;
+                            const auth = getAuth(app);
+                            const dbInst = getFirestore(app);
+                            setDb(dbInst);
 
-                        signInAnonymously(auth).catch(err => setError("Erro Auth: " + err.message));
-                        onAuthStateChanged(auth, (u) => {
-                            if (u) {
-                                setUser(u);
-                                setStatus("Sincronizado");
-                            }
-                        });
+                            signInAnonymously(auth).catch(e => setError("Erro Auth: " + e.message));
+                            onAuthStateChanged(auth, (u) => {
+                                if (u) {
+                                    setUser(u);
+                                    setInitialized(true);
+                                    // Remove o loader manual assim que o React assume
+                                    const ldr = document.getElementById('loader');
+                                    if(ldr) ldr.style.display = 'none';
+                                }
+                            });
+                        } catch (e) { setError("Erro de inicialização: " + e.message); }
                     }
-                }, 500);
-                return () => clearInterval(checkFirebase);
+                }, 300);
+                return () => clearInterval(interval);
             }, []);
 
-            // 2. Atualizar Ícones Lucide
+            // 2. Refrescar Ícones
             useEffect(() => {
-                if (window.lucide) window.lucide.createIcons();
+                if (window.lucide && initialized) {
+                    try { window.lucide.createIcons(); } catch(e) {}
+                }
             });
 
-            // 3. Lógica de Vizinhos
+            // 3. Algoritmo de Vizinhos
             const getNeighbors = (target, dist = 2) => {
-                const idx = WHEEL_ORDER.indexOf(parseInt(target));
+                const num = parseInt(target);
+                const idx = WHEEL_ORDER.indexOf(num);
                 if (idx === -1) return [];
                 const res = [];
                 for (let i = -dist; i <= dist; i++) {
@@ -112,41 +135,44 @@
                 return res;
             };
 
-            // 4. Motor de Análise
+            // 4. Motor de Sinais
             const generateSignal = useCallback((nums) => {
-                if (nums.length < 5) {
-                    setSignal(null);
-                    return;
-                }
-                const last = nums[0];
-                const last5 = nums.slice(0, 5);
-                let target = [];
-                let stype = "ESTRATEGIA";
-                let conf = 85;
+                if (nums.length < 5) { setSignal(null); return; }
+                try {
+                    const last = nums[0];
+                    const last5 = nums.slice(0, 5);
+                    let target = [];
+                    let type = "ESTRATEGIA";
+                    let conf = 85;
 
-                const counts = {};
-                nums.slice(0, 20).forEach(n => counts[n] = (counts[n] || 0) + 1);
-                const hot = Object.entries(counts).sort((a,b) => b[1]-a[1])[0];
+                    const counts = {};
+                    nums.slice(0, 20).forEach(n => { if(!isNaN(n)) counts[n] = (counts[n] || 0) + 1; });
+                    const hot = Object.entries(counts).sort((a,b) => b[1]-a[1])[0];
 
-                if (hot && hot[1] >= 2) {
-                    target = getNeighbors(hot[0], 3);
-                    stype = "CLUSTER DE FREQUÊNCIA";
-                    conf = 92;
-                } else if (last5.filter(n => COLORS.red.includes(n)).length >= 4) {
-                    target = [2, 4, 6, 11, 13, 15, 17, 20];
-                    stype = "INVERSÃO ZONA PRETA";
-                    conf = 88;
-                } else {
-                    const oppositeIdx = (WHEEL_ORDER.indexOf(last) + 18) % 37;
-                    target = getNeighbors(WHEEL_ORDER[oppositeIdx], 2);
-                    stype = "SALTO DE RODA";
-                    conf = 85;
-                }
-
-                setSignal({ numbers: target, type: stype, confidence: conf, main: target[Math.floor(target.length/2)] });
+                    if (hot && hot[1] >= 2) {
+                        target = getNeighbors(hot[0], 3);
+                        type = "CLUSTER DE FREQUÊNCIA";
+                        conf = 92;
+                    } else if (last5.filter(n => COLORS.red.includes(n)).length >= 4) {
+                        target = [2, 4, 6, 11, 13, 15, 17, 20];
+                        type = "INVERSÃO ZONA PRETA";
+                        conf = 88;
+                    } else {
+                        const idxInWheel = WHEEL_ORDER.indexOf(last);
+                        if (idxInWheel !== -1) {
+                            const oppositeIdx = (idxInWheel + 18) % 37;
+                            target = getNeighbors(WHEEL_ORDER[oppositeIdx], 2);
+                            type = "SALTO DE RODA";
+                            conf = 85;
+                        }
+                    }
+                    if (target.length > 0) {
+                        setSignal({ numbers: target, type, confidence: conf, main: target[Math.floor(target.length/2)] });
+                    }
+                } catch (e) { console.error("Signal error:", e); }
             }, []);
 
-            // 5. Escuta Firestore
+            // 5. Escuta de Dados
             useEffect(() => {
                 if (!user || !db) return;
                 const { collection, onSnapshot, query, limit, orderBy } = window.FirebaseSDK;
@@ -157,7 +183,7 @@
                     setHistory(data);
                     generateSignal(data);
                 }, (err) => {
-                    if (err.code === 'permission-denied') setError("Erro: Verifique as Regras do Firestore no Firebase Console.");
+                    if (err.code === 'permission-denied') setError("Erro: Publique as Regras no Firebase Console!");
                 });
                 return () => unsub();
             }, [user, db, generateSignal]);
@@ -176,55 +202,45 @@
             if (error) {
                 return (
                     <div className="min-h-screen flex items-center justify-center bg-black p-8 text-center">
-                        <div className="bg-red-500/10 border border-red-500/50 p-6 rounded-2xl max-w-sm">
-                            <i data-lucide="alert-circle" className="w-12 h-12 text-red-500 mx-auto mb-4"></i>
-                            <h2 className="text-xl font-bold mb-2">Erro de Sistema</h2>
-                            <p className="text-zinc-500 text-sm mb-4">{error}</p>
-                            <button onClick={() => window.location.reload()} className="bg-zinc-800 px-6 py-2 rounded-xl font-bold">Tentar Novamente</button>
+                        <div className="bg-red-500/10 border border-red-500/50 p-8 rounded-[2rem] max-w-sm">
+                            <h2 className="text-xl font-bold mb-4 text-red-500">Falha de Sistema</h2>
+                            <p className="text-zinc-500 text-xs mb-6 leading-relaxed">{error}</p>
+                            <button onClick={() => window.location.reload()} className="bg-zinc-800 w-full py-3 rounded-xl font-bold uppercase text-[10px] tracking-widest">Reiniciar Bot</button>
                         </div>
                     </div>
                 );
             }
 
-            if (status === "A iniciar...") {
-                return (
-                    <div className="min-h-screen flex flex-col items-center justify-center bg-black">
-                        <div className="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
-                        <p className="text-[10px] font-black uppercase tracking-[0.4em] mt-6 animate-pulse text-emerald-500">Quantum Kernel v4.2</p>
-                    </div>
-                );
-            }
+            if (!initialized) return null; // O loader HTML trata disto
 
             return (
                 <div className="min-h-screen p-4 lg:p-10 pb-24">
-                    <div className="max-w-5xl mx-auto space-y-6">
-                        {/* Header */}
-                        <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-zinc-900/50 p-6 rounded-[2rem] border border-zinc-800 shadow-2xl">
+                    <div className="max-w-5xl mx-auto space-y-6 animate-in">
+                        {/* HUD Header */}
+                        <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-zinc-900/50 p-6 rounded-[2.5rem] border border-zinc-800 shadow-2xl">
                             <div className="flex items-center gap-4">
                                 <div className="p-3 bg-emerald-600 rounded-2xl shadow-lg">
                                     <i data-lucide="cpu" className="w-6 h-6 text-white"></i>
                                 </div>
                                 <div>
-                                    <h1 className="text-xl font-black tracking-tighter uppercase leading-none text-white">Quantum <span className="text-emerald-500">V4 Pro</span></h1>
+                                    <h1 className="text-xl font-black tracking-tighter uppercase leading-none text-white">Quantum <span className="text-emerald-500 font-normal">V4 Pro</span></h1>
                                     <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest mt-1 flex items-center gap-2">
                                         <i data-lucide="activity" className="w-3 h-3 text-emerald-500"></i> Servidor Online
                                     </p>
                                 </div>
                             </div>
-                            <div className="flex gap-4">
-                                <div className="bg-black/40 px-5 py-3 rounded-2xl border border-zinc-800 text-center">
-                                    <p className="text-[9px] text-zinc-500 font-bold uppercase mb-1">Banca</p>
-                                    <p className="text-sm font-black text-white">R$ {bankroll.toFixed(2)}</p>
-                                </div>
+                            <div className="bg-black/40 px-5 py-3 rounded-2xl border border-zinc-800 text-center">
+                                <p className="text-[9px] text-zinc-500 font-bold uppercase mb-1">Banca</p>
+                                <p className="text-sm font-black text-white">R$ {bankroll.toFixed(2)}</p>
                             </div>
                         </div>
 
-                        {/* Sinal */}
+                        {/* Sinal Central */}
                         <div className={`p-8 rounded-[2.5rem] border-2 transition-all duration-700 ${signal ? 'bg-emerald-600/5 border-emerald-500/50 shadow-2xl shadow-emerald-500/10' : 'bg-zinc-900/30 border-zinc-800'}`}>
                             {signal ? (
                                 <div className="space-y-6 animate-in">
                                     <div className="flex justify-between items-center">
-                                        <span className="bg-emerald-600 text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-tighter animate-pulse text-white">Sinal Ativo</span>
+                                        <span className="bg-emerald-600 text-white text-[9px] font-black px-3 py-1 rounded-full uppercase tracking-tighter animate-pulse">Sinal Confirmado</span>
                                         <div className="flex items-center gap-2 text-emerald-500 font-bold text-sm">
                                             <i data-lucide="trending-up" className="w-4 h-4"></i> {signal.confidence}% Precisão
                                         </div>
@@ -233,7 +249,7 @@
                                         <h3 className="text-[10px] text-zinc-500 font-black uppercase tracking-widest">Aposta Plena (Direta):</h3>
                                         <div className="grid grid-cols-4 sm:grid-cols-8 gap-2">
                                             {signal.numbers.map((n, i) => (
-                                                <div key={i} className={`h-12 rounded-xl flex flex-col items-center justify-center border-2 border-white/5 shadow-xl transition-all ${COLORS.red.includes(n) ? 'bg-red-600' : n === 0 ? 'bg-emerald-600' : 'bg-zinc-950'}`}>
+                                                <div key={`s-${n}-${i}`} className={`h-12 rounded-xl flex flex-col items-center justify-center border-2 border-white/5 shadow-xl transition-all ${COLORS.red.includes(n) ? 'bg-red-600' : n === 0 ? 'bg-emerald-600' : 'bg-zinc-950'}`}>
                                                     <span className="text-lg font-black text-white">{n}</span>
                                                     <span className="text-[7px] opacity-40 font-black text-white">R$ 1.00</span>
                                                 </div>
@@ -246,8 +262,8 @@
                                             <p className="text-[10px] font-black text-zinc-200">{signal.type}</p>
                                         </div>
                                         <div className="bg-black/60 p-3 rounded-2xl border border-white/5">
-                                            <p className="text-[9px] text-zinc-500 font-bold uppercase mb-1">Pivot Principal</p>
-                                            <p className="text-[10px] font-black text-emerald-500 uppercase">Focar nº {signal.main}</p>
+                                            <p className="text-[9px] text-zinc-500 font-bold uppercase mb-1">Pivot</p>
+                                            <p className="text-[10px] font-black text-emerald-500 uppercase">nº {signal.main}</p>
                                         </div>
                                     </div>
                                 </div>
@@ -265,7 +281,7 @@
                                 <button onClick={() => addNumber(0)} className="col-span-12 h-14 bg-emerald-600 hover:bg-emerald-500 rounded-2xl font-black text-xl border-b-4 border-emerald-800 active:scale-95 transition-all mb-2 text-white">0</button>
                                 {[3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36, 2, 5, 8, 11, 14, 17, 20, 23, 26, 29, 32, 35, 1, 4, 7, 10, 13, 16, 19, 22, 25, 28, 31, 34].map(n => (
                                     <button 
-                                        key={n} 
+                                        key={`b-${n}`} 
                                         onClick={() => addNumber(n)} 
                                         className={`col-span-2 md:col-span-1 h-12 flex items-center justify-center font-black text-sm rounded-xl border-b-4 active:scale-95 transition-all text-white ${COLORS.red.includes(n) ? 'bg-red-600 border-red-800' : 'bg-zinc-800 border-zinc-950'}`}
                                     >
@@ -276,17 +292,17 @@
                         </div>
 
                         {/* Histórico */}
-                        <div className="bg-zinc-900/50 border border-zinc-800 rounded-[2rem] p-6 shadow-xl">
+                        <div className="bg-zinc-900/50 border border-zinc-800 rounded-[2rem] p-6">
                             <h3 className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-4 flex items-center gap-2">
-                                <i data-lucide="hash" className="w-4 h-4 text-emerald-500"></i> Últimos Registos
+                                <i data-lucide="hash" className="w-4 h-4 text-emerald-500"></i> Histórico Recente
                             </h3>
                             <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
                                 {history.map((n, i) => (
-                                    <div key={i} className={`w-10 h-10 shrink-0 rounded-xl flex items-center justify-center font-black text-sm shadow-lg animate-in ${COLORS.red.includes(n) ? 'bg-red-600' : n === 0 ? 'bg-emerald-600' : 'bg-zinc-800'} text-white`}>
+                                    <div key={`h-${i}-${n}`} className={`w-10 h-10 shrink-0 rounded-xl flex items-center justify-center font-black text-sm shadow-lg animate-in ${COLORS.red.includes(n) ? 'bg-red-600 text-white' : n === 0 ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-300'}`}>
                                         {n}
                                     </div>
                                 ))}
-                                {history.length === 0 && <p className="text-[10px] text-zinc-700 italic">Nenhum dado cloud...</p>}
+                                {history.length === 0 && <p className="text-[10px] text-zinc-700 italic">Sem dados...</p>}
                             </div>
                         </div>
                     </div>

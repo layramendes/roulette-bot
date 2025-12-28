@@ -92,11 +92,8 @@
 
                         const unsubscribe = auth.onAuthStateChanged((u) => {
                             if (u) {
-                                console.info('Firebase Auth OK. UID:', u.uid, 'isAnonymous:', u.isAnonymous);
                                 setUser(u);
                                 setStatus('ready');
-                            } else {
-                                console.warn('Auth state changed: no user');
                             }
                         });
                         return () => unsubscribe();
@@ -187,7 +184,7 @@
                     setHistory(data);
                     runLogic(data);
                 }, (err) => {
-                    console.error("Erro de Permissão Firestore no Sync:", err, { uid: user?.uid, status });
+                    console.error("Erro de Permissão Firestore no Sync:", err);
                 });
                 
                 return () => unsubscribe();
@@ -205,11 +202,7 @@
                         timestamp: firebase.firestore.FieldValue.serverTimestamp()
                     });
                 } catch (e) { 
-                    console.error("Falha ao registar número:", e, { uid: user?.uid, status }); 
-                    // Se for um FirebaseError de permissões, expor código para facilitar diagnóstico
-                    if (e && e.code) {
-                        console.error('FirebaseError code:', e.code, 'message:', e.message);
-                    }
+                    console.error("Falha ao registar número:", e); 
                 }
             };
 

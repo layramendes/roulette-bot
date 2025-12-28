@@ -20,8 +20,16 @@
         import { getFirestore, collection, addDoc, onSnapshot, serverTimestamp, query, limit, orderBy } from "https://www.gstatic.com/firebasejs/12.7.0/firebase-firestore.js";
         import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.7.0/firebase-analytics.js";
         
-        // Utilizando as configurações de ambiente para evitar erros de permissão no Canvas
-        const firebaseConfig = JSON.parse(__firebase_config);
+        // Configuração oficial fornecida
+        const firebaseConfig = {
+            apiKey: "AIzaSyCUcHQrnU-2312pAFiPzH_35SO3gQ6Wsd4",
+            authDomain: "meubotroleta.firebaseapp.com",
+            projectId: "meubotroleta",
+            storageBucket: "meubotroleta.firebasestorage.app",
+            messagingSenderId: "22051928464",
+            appId: "1:22051928464:web:b58b2604a9b677942adb15",
+            measurementId: "G-L5KJFRFJFB"
+        };
 
         // Inicialização
         const app = initializeApp(firebaseConfig);
@@ -71,31 +79,19 @@
             const [db, setDb] = useState(null);
             const [initialized, setInitialized] = useState(false);
             
-            const appId = typeof __app_id !== 'undefined' ? __app_id : 'roulette-v4-exact';
+            const appId = 'roulette-v4-exact';
 
             useEffect(() => {
                 const checkSDK = setInterval(() => {
                     if (window.FirebaseSDK) {
                         clearInterval(checkSDK);
-                        const { app, getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, getFirestore } = window.FirebaseSDK;
+                        const { app, getAuth, signInAnonymously, onAuthStateChanged, getFirestore } = window.FirebaseSDK;
                         const auth = getAuth(app);
                         const dbInstance = getFirestore(app);
                         setDb(dbInstance);
                         
-                        // Fluxo de autenticação obrigatório (Regra 3)
-                        const initAuth = async () => {
-                            try {
-                                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                                    await signInWithCustomToken(auth, __initial_auth_token);
-                                } else {
-                                    await signInAnonymously(auth);
-                                }
-                            } catch (error) {
-                                console.error("Falha na autenticação:", error);
-                            }
-                        };
+                        signInAnonymously(auth).catch(err => console.error("Erro Auth:", err));
                         
-                        initAuth();
                         const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
                             setUser(currentUser);
                             setInitialized(true);
@@ -112,12 +108,10 @@
             });
 
             useEffect(() => {
-                // Guardar operação do Firestore (Regra 3)
                 if (!user || !db) return;
                 
                 const { collection, onSnapshot, query, limit, orderBy } = window.FirebaseSDK;
                 
-                // Caminho rigoroso de dados privados (Regra 1)
                 const q = query(
                     collection(db, 'artifacts', appId, 'users', user.uid, 'spins'), 
                     orderBy('timestamp', 'desc'), 
@@ -129,11 +123,11 @@
                     setHistory(data);
                     if (data.length > 0) generateExactSignal(data);
                 }, (error) => {
-                    console.error("Erro no ouvinte de snapshot:", error);
+                    console.error("Erro de Permissão ou Snapshot:", error);
                 });
                 
                 return () => unsub();
-            }, [user, db, appId]);
+            }, [user, db]);
 
             const getNeighbors = (targetNum, distance = 2) => {
                 const idx = WHEEL_ORDER.indexOf(targetNum);

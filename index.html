@@ -5,72 +5,52 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Quantum Roulette V4 - Pro AI</title>
     
-    <!-- Diagnóstico de Emergência -->
-    <script>
-        window.bootLog = ["A iniciar sistema..."];
-        function addBootLog(msg) {
-            window.bootLog.push(msg);
-            console.log(msg);
-            const debugEl = document.getElementById('debug-console');
-            if (debugEl) debugEl.innerHTML += `<div>> ${msg}</div>`;
-        }
-        window.onerror = function(m, u, l) {
-            addBootLog(`ERRO CRÍTICO: ${m} na linha ${l}`);
-            if (document.body) {
-                document.body.style.background = "#1a0505";
-            }
-            return false;
-        };
-        setTimeout(() => {
-            if (!window.reactStarted) {
-                addBootLog("AVISO: O React está a demorar demasiado. Verifique a ligação.");
-                const debugInfo = document.getElementById('debug-info');
-                if (debugInfo) debugInfo.style.display = 'block';
-            }
-        }, 8000);
-    </script>
-
-    <!-- Bibliotecas Core -->
+    <!-- Bibliotecas Core (Carregamento Obrigatório) -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
     
-    <!-- Firebase SDK Compat (O mais estável para ficheiros únicos) -->
+    <!-- Firebase SDK Compat (Ultra-estável para Single File) -->
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 
     <style>
-        body { background-color: #050507; color: #f4f4f5; font-family: ui-sans-serif, system-ui, sans-serif; -webkit-tap-highlight-color: transparent; }
+        body { background-color: #050507; color: #f4f4f5; font-family: ui-sans-serif, system-ui, sans-serif; -webkit-tap-highlight-color: transparent; margin: 0; overflow-x: hidden; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
-        @keyframes fade-in { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes fade-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         .animate-in { animation: fade-in 0.4s ease-out forwards; }
-        .loading-ring { width: 40px; height: 40px; border: 4px solid #10b98120; border-top-color: #10b981; border-radius: 50%; animation: spin 1s linear infinite; }
+        .loading-ring { width: 44px; height: 44px; border: 4px solid #10b98120; border-top-color: #10b981; border-radius: 50%; animation: spin 1s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
+        .btn-active:active { transform: scale(0.96); transition: 0.1s; }
     </style>
 </head>
 <body>
-    <div id="root">
-        <!-- Loader Inicial -->
-        <div id="loading-screen" style="min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #050507;">
-            <div class="loading-ring"></div>
-            <p style="color: #666; font-size: 10px; margin-top: 20px; font-weight: 900; letter-spacing: 0.5em; text-transform: uppercase;">Quantum Kernel v4.5</p>
-            
-            <!-- Consola de Debug (Escondida por defeito) -->
-            <div id="debug-info" style="display:none; margin-top: 30px; padding: 15px; background: #111; border: 1px solid #333; border-radius: 10px; width: 80%; max-width: 400px;">
-                <p style="color: #ef4444; font-size: 11px; font-weight: bold; margin-bottom: 8px;">RELATÓRIO DE DIAGNÓSTICO:</p>
-                <div id="debug-console" style="color: #555; font-family: monospace; font-size: 9px; line-height: 1.5;"></div>
-                <button onclick="location.reload()" style="margin-top: 15px; width: 100%; background: #222; color: #eee; border: none; padding: 8px; border-radius: 5px; font-size: 10px; font-weight: bold;">FORÇAR REINÍCIO</button>
-            </div>
-        </div>
-    </div>
+    <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect, useCallback } = React;
+        const { useState, useEffect, useCallback, useMemo } = React;
 
-        addBootLog("Módulos React carregados.");
+        // --- Componentes de Ícones Internos para evitar NotFoundError (Lucide replacement) ---
+        const IconCPU = ({ className }) => (
+            <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="16" height="16" x="4" y="4" rx="2"/><rect width="6" height="6" x="9" y="9" rx="1"/><path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M2 9h2"/><path d="M20 15h2"/><path d="M20 9h2"/><path d="M9 2v2"/><path d="M9 20v2"/></svg>
+        );
+        const IconActivity = ({ className }) => (
+            <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+        );
+        const IconTrendingUp = ({ className }) => (
+            <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+        );
+        const IconHash = ({ className }) => (
+            <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/></svg>
+        );
+        const IconRefresh = ({ className }) => (
+            <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></svg>
+        );
+        const IconAlert = ({ className }) => (
+            <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        );
 
         const firebaseConfig = {
             apiKey: "AIzaSyCUcHQrnU-2312pAFiPzH_35SO3gQ6Wsd4",
@@ -91,47 +71,32 @@
             const [user, setUser] = useState(null);
             const [history, setHistory] = useState([]);
             const [signal, setSignal] = useState(null);
-            const [initialized, setInitialized] = useState(false);
-            const [error, setError] = useState(null);
+            const [status, setStatus] = useState('loading'); // 'loading', 'ready', 'error'
+            const [errorMsg, setErrorMsg] = useState(null);
 
+            // 1. Inicialização Centralizada
             useEffect(() => {
-                window.reactStarted = true;
-                addBootLog("App montada com sucesso.");
-                
-                try {
-                    if (!firebase.apps.length) {
-                        firebase.initializeApp(firebaseConfig);
-                        addBootLog("Firebase Inicializado.");
-                    }
-                    
-                    const auth = firebase.auth();
-                    auth.signInAnonymously().then(res => {
-                        addBootLog("Sessão Anónima Ativa.");
+                const initApp = async () => {
+                    try {
+                        if (!firebase.apps.length) {
+                            firebase.initializeApp(firebaseConfig);
+                        }
+                        const auth = firebase.auth();
+                        const res = await auth.signInAnonymously();
                         setUser(res.user);
-                        setInitialized(true);
-                        const ldr = document.getElementById('loading-screen');
-                        if (ldr) ldr.style.display = 'none';
-                    }).catch(err => {
-                        addBootLog(`Erro Auth: ${err.message}`);
-                        setError(`Falha na ligação: ${err.message}`);
-                    });
-                } catch (e) {
-                    addBootLog(`Erro Inicialização: ${e.message}`);
-                    setError(e.message);
-                }
+                        setStatus('ready');
+                    } catch (e) {
+                        setStatus('error');
+                        setErrorMsg(e.message);
+                    }
+                };
+                initApp();
             }, []);
 
+            // 3. Listener do Banco de Dados
             useEffect(() => {
-                if (window.lucide && initialized) {
-                    lucide.createIcons();
-                }
-            });
+                if (!user || status !== 'ready') return;
 
-            // Listener Firestore Protegido
-            useEffect(() => {
-                if (!user || !initialized) return;
-
-                addBootLog("A ligar ao Firestore...");
                 const db = firebase.firestore();
                 const q = db.collection('artifacts')
                           .doc('roulette-v4-exact')
@@ -139,28 +104,25 @@
                           .doc(user.uid)
                           .collection('spins')
                           .orderBy('timestamp', 'desc')
-                          .limit(30);
+                          .limit(20);
 
                 const unsub = q.onSnapshot((snap) => {
                     const data = snap.docs
-                        .map(d => {
-                            const val = d.data()?.number;
-                            return val !== undefined ? parseInt(val) : null;
-                        })
-                        .filter(n => n !== null && !isNaN(n));
+                        .map(d => parseInt(d.data()?.number))
+                        .filter(n => !isNaN(n));
                     
                     setHistory(data);
-                    if (data.length >= 5) calculateSignal(data);
+                    if (data.length >= 5) processSignals(data);
                     else setSignal(null);
                 }, (err) => {
-                    addBootLog(`Erro Firestore: ${err.code}`);
                     if (err.code === 'permission-denied') {
-                        setError("Acesso Negado: Publique as Regras no Firebase Console!");
+                        setStatus('error');
+                        setErrorMsg("Acesso Negado: Publique as Regras no Firebase.");
                     }
                 });
 
                 return () => unsub();
-            }, [user, initialized]);
+            }, [user, status]);
 
             const getNeighbors = (target, dist = 2) => {
                 const idx = WHEEL_ORDER.indexOf(parseInt(target));
@@ -172,29 +134,31 @@
                 return res;
             };
 
-            const calculateSignal = (nums) => {
+            const processSignals = (nums) => {
                 const last = nums[0];
                 const last5 = nums.slice(0, 5);
                 let target = [];
-                let type = "CALIBRANDO";
+                let type = "ANÁLISE";
                 let conf = 85;
 
                 const counts = {};
-                nums.slice(0, 20).forEach(n => counts[n] = (counts[n] || 0) + 1);
+                nums.slice(0, 15).forEach(n => counts[n] = (counts[n] || 0) + 1);
                 const hotEntries = Object.entries(counts).sort((a,b) => b[1]-a[1]);
-                
-                if (hotEntries[0] && hotEntries[0][1] >= 2) {
-                    target = getNeighbors(hotEntries[0][0], 3);
+                const hot = hotEntries.length > 0 ? hotEntries[0] : null;
+
+                if (hot && hot[1] >= 2) {
+                    target = getNeighbors(hot[0], 3);
                     type = "CLUSTER DE FREQUÊNCIA";
                     conf = 92;
                 } else if (last5.filter(n => COLORS.red.includes(n)).length >= 4) {
                     target = [2, 4, 6, 11, 13, 15, 17, 20];
-                    type = "INVERSÃO ZONA PRETA";
+                    type = "INVERSÃO DE ZONA";
                     conf = 88;
                 } else {
-                    const oppositeIdx = (WHEEL_ORDER.indexOf(last) + 18) % 37;
+                    const idxInWheel = WHEEL_ORDER.indexOf(last);
+                    const oppositeIdx = idxInWheel !== -1 ? (idxInWheel + 18) % 37 : 0;
                     target = getNeighbors(WHEEL_ORDER[oppositeIdx], 2);
-                    type = "SALTO DE RODA";
+                    type = "OPOSIÇÃO FÍSICA";
                     conf = 85;
                 }
 
@@ -216,97 +180,109 @@
                                 number: parseInt(n),
                                 timestamp: firebase.firestore.FieldValue.serverTimestamp()
                             });
-                } catch (e) { addBootLog(`Erro ao gravar: ${e.message}`); }
+                } catch (e) { console.error("Erro ao gravar."); }
             };
 
-            if (error) {
+            // VISTA 1: CARREGAMENTO
+            if (status === 'loading') {
                 return (
-                    <div className="min-h-screen flex items-center justify-center bg-black p-8 text-center animate-in">
-                        <div className="bg-red-500/10 border border-red-500/30 p-8 rounded-[2.5rem] max-w-sm w-full">
-                            <div className="w-12 h-12 bg-red-600 rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg">
-                                <i data-lucide="alert-triangle" className="text-white w-6 h-6"></i>
-                            </div>
-                            <h2 className="text-xl font-black mb-2 text-white uppercase tracking-tighter">Erro de Kernel</h2>
-                            <p className="text-zinc-500 text-xs mb-6 leading-relaxed">{error}</p>
-                            <button onClick={() => location.reload()} className="w-full bg-zinc-800 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-zinc-700 transition-all text-white">Tentar Reiniciar</button>
+                    <div className="min-h-screen flex flex-col items-center justify-center bg-[#050507]">
+                        <div className="loading-ring"></div>
+                        <p className="text-[10px] font-black text-emerald-500/50 uppercase tracking-[0.5em] mt-8 animate-pulse text-center px-6">
+                            Quantum Kernel v4.7<br/>Sincronizando Módulos...
+                        </p>
+                    </div>
+                );
+            }
+
+            // VISTA 2: ERRO
+            if (status === 'error') {
+                return (
+                    <div className="min-h-screen flex items-center justify-center bg-[#050507] p-8 text-center">
+                        <div className="bg-red-500/10 border border-red-500/20 p-8 rounded-[2rem] max-w-sm w-full">
+                            <IconAlert className="w-12 h-12 text-red-500 mx-auto mb-4" />
+                            <h2 className="text-xl font-black text-white uppercase mb-2">Erro de Kernel</h2>
+                            <p className="text-zinc-500 text-xs mb-6 leading-relaxed">{errorMsg}</p>
+                            <button onClick={() => location.reload()} className="w-full bg-zinc-800 py-3 rounded-xl font-bold text-white text-xs uppercase tracking-widest">Tentar Reiniciar</button>
                         </div>
                     </div>
                 );
             }
 
-            if (!initialized) return null;
-
+            // VISTA 3: INTERFACE PRINCIPAL
             return (
-                <div className="min-h-screen p-4 lg:p-10 pb-24 bg-[#050507]">
-                    <div className="max-w-5xl mx-auto space-y-6 animate-in">
-                        {/* HUD Superior */}
-                        <div className="flex justify-between items-center bg-zinc-900/50 p-5 rounded-[2rem] border border-zinc-800 shadow-xl">
+                <div className="min-h-screen p-4 lg:p-10 pb-24 bg-[#050507] animate-in">
+                    <div className="max-w-4xl mx-auto space-y-6">
+                        
+                        {/* Header HUD */}
+                        <header className="flex justify-between items-center bg-zinc-900/50 p-5 rounded-[2rem] border border-zinc-800">
                             <div className="flex items-center gap-4">
                                 <div className="p-3 bg-emerald-600 rounded-2xl shadow-lg">
-                                    <i data-lucide="cpu" className="w-5 h-5 text-white"></i>
+                                    <IconCPU className="w-5 h-5 text-white" />
                                 </div>
                                 <div>
                                     <h1 className="text-lg font-black tracking-tighter uppercase text-white leading-none">Quantum <span className="text-emerald-500">V4 Pro</span></h1>
-                                    <p className="text-[9px] text-zinc-500 font-bold uppercase tracking-widest mt-1 flex items-center gap-2">
-                                        <i data-lucide="activity" className="w-2.5 h-2.5 text-emerald-500"></i> Servidor Ativo
-                                    </p>
+                                    <div className="flex items-center gap-2 text-[8px] text-emerald-500 font-bold uppercase tracking-widest mt-1">
+                                        <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-ping"></div>
+                                        Kernel Ativo
+                                    </div>
                                 </div>
                             </div>
                             <div className="bg-black/40 px-5 py-3 rounded-2xl border border-zinc-800 text-center">
-                                <p className="text-[8px] text-zinc-500 font-bold uppercase mb-0.5 text-zinc-400">Banca</p>
-                                <p className="text-xs font-black text-white">R$ 100,00</p>
+                                <p className="text-[8px] text-zinc-500 font-bold uppercase mb-0.5">Banca</p>
+                                <p className="text-xs font-black text-white italic">R$ 100,00</p>
                             </div>
-                        </div>
+                        </header>
 
-                        {/* Painel de Sinais */}
-                        <div className={`p-8 rounded-[2.5rem] border-2 transition-all duration-700 ${signal ? 'bg-emerald-600/5 border-emerald-500/50 shadow-[0_0_50px_-10px_rgba(16,185,129,0.2)]' : 'bg-zinc-900/30 border-zinc-800'}`}>
+                        {/* Sinal Ativo */}
+                        <div className={`p-8 rounded-[2.5rem] border-2 transition-all duration-700 ${signal ? 'bg-emerald-600/5 border-emerald-500/50 shadow-2xl' : 'bg-zinc-900/30 border-zinc-800'}`}>
                             {signal ? (
                                 <div className="space-y-6 animate-in">
                                     <div className="flex justify-between items-center">
-                                        <span className="bg-emerald-600 text-white text-[9px] font-black px-3 py-1 rounded-full animate-pulse uppercase tracking-widest">Sinal Confirmado</span>
+                                        <span className="bg-emerald-600 text-white text-[9px] font-black px-3 py-1 rounded-full uppercase">Sinal Ativo</span>
                                         <div className="flex items-center gap-2 text-emerald-500 font-bold text-xs uppercase">
-                                            <i data-lucide="trending-up" className="w-3.5 h-3.5"></i> {signal.confidence}% Precisão
+                                            <IconTrendingUp className="w-3.5 h-3.5" /> {signal.confidence}% Precisão
                                         </div>
                                     </div>
                                     <div className="space-y-4">
-                                        <h3 className="text-[10px] text-zinc-500 font-black uppercase tracking-widest">Aposta Direta (Plenos):</h3>
+                                        <h3 className="text-[10px] text-zinc-500 font-black uppercase tracking-widest">Entrada em Plenos:</h3>
                                         <div className="grid grid-cols-4 sm:grid-cols-8 gap-2">
                                             {signal.numbers.map((n, i) => (
-                                                <div key={`${n}-${i}`} className={`h-12 rounded-xl flex flex-col items-center justify-center border-2 border-white/5 shadow-lg transition-all ${COLORS.red.includes(n) ? 'bg-red-600' : n === 0 ? 'bg-emerald-600' : 'bg-zinc-950'}`}>
+                                                <div key={`s-${n}-${i}`} className={`h-12 rounded-xl flex flex-col items-center justify-center border-2 border-white/5 shadow-lg ${COLORS.red.includes(n) ? 'bg-red-600' : n === 0 ? 'bg-emerald-600' : 'bg-zinc-950'}`}>
                                                     <span className="text-lg font-black text-white">{n}</span>
-                                                    <span className="text-[7px] opacity-40 font-bold uppercase text-white text-center">R$ 1.00</span>
+                                                    <span className="text-[7px] opacity-40 font-bold text-white uppercase">R$ 1.00</span>
                                                 </div>
                                             ))}
                                         </div>
                                     </div>
                                     <div className="grid grid-cols-2 gap-4 pt-4 border-t border-white/5 text-center">
                                         <div className="bg-black/60 p-3 rounded-2xl border border-white/5">
-                                            <p className="text-[8px] text-zinc-500 font-bold uppercase mb-1 tracking-tighter text-zinc-400">Estratégia</p>
+                                            <p className="text-[8px] text-zinc-500 font-bold uppercase mb-1">Estratégia</p>
                                             <p className="text-[10px] font-black text-zinc-200 uppercase">{signal.type}</p>
                                         </div>
                                         <div className="bg-black/60 p-3 rounded-2xl border border-white/5">
-                                            <p className="text-[8px] text-zinc-500 font-bold uppercase mb-1 tracking-tighter text-zinc-400">Pivô Alvo</p>
-                                            <p className="text-[10px] font-black text-emerald-500 uppercase">Número {signal.main}</p>
+                                            <p className="text-[8px] text-zinc-500 font-bold uppercase mb-1">Pivot Alvo</p>
+                                            <p className="text-[10px] font-black text-emerald-500 uppercase">Nº {signal.main}</p>
                                         </div>
                                     </div>
                                 </div>
                             ) : (
                                 <div className="py-20 text-center space-y-4 opacity-20 flex flex-col items-center">
-                                    <i data-lucide="refresh-cw" className="w-10 h-10 animate-spin text-zinc-400"></i>
-                                    <p className="text-[10px] font-black uppercase tracking-[0.4em] text-zinc-400">Sincronizando Tendências...</p>
+                                    <IconRefresh className="w-10 h-10 animate-spin text-zinc-400" />
+                                    <p className="text-[10px] font-black uppercase tracking-[0.4em] text-zinc-400 text-center">Sincronizando Tendências<br/>da Mesa Brasileira...</p>
                                 </div>
                             )}
                         </div>
 
                         {/* Teclado Profissional */}
                         <div className="bg-zinc-900/50 border border-zinc-800 p-6 rounded-[2.5rem] shadow-2xl">
-                            <div className="grid grid-cols-12 gap-1.5 mb-2">
-                                <button onClick={() => addNumber(0)} className="col-span-12 h-14 bg-emerald-600 hover:bg-emerald-500 rounded-xl font-black text-xl border-b-4 border-emerald-800 active:scale-95 transition-all text-white">0</button>
+                            <div className="grid grid-cols-12 gap-1.5">
+                                <button onClick={() => addNumber(0)} className="col-span-12 h-14 bg-emerald-600 hover:bg-emerald-500 rounded-xl font-black text-xl border-b-4 border-emerald-800 active:scale-95 transition-all text-white mb-2 btn-active">0</button>
                                 {[3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36, 2, 5, 8, 11, 14, 17, 20, 23, 26, 29, 32, 35, 1, 4, 7, 10, 13, 16, 19, 22, 25, 28, 31, 34].map(n => (
                                     <button 
-                                        key={n} 
+                                        key={`btn-${n}`} 
                                         onClick={() => addNumber(n)} 
-                                        className={`col-span-2 md:col-span-1 h-12 flex items-center justify-center font-black text-sm rounded-lg border-b-4 active:scale-95 transition-all text-white ${COLORS.red.includes(n) ? 'bg-red-600 border-red-800' : 'bg-zinc-800 border-zinc-950'}`}
+                                        className={`col-span-2 md:col-span-1 h-12 flex items-center justify-center font-black text-sm rounded-lg border-b-4 active:scale-95 transition-all text-white btn-active ${COLORS.red.includes(n) ? 'bg-red-600 border-red-800' : 'bg-zinc-800 border-zinc-950'}`}
                                     >
                                         {n}
                                     </button>
@@ -315,17 +291,21 @@
                         </div>
 
                         {/* Histórico Real-time */}
-                        <div className="bg-zinc-900/50 border border-zinc-800 rounded-[2rem] p-5 shadow-xl">
-                            <h3 className="text-[9px] font-black text-zinc-500 uppercase tracking-widest mb-4 flex items-center gap-2">
-                                <i data-lucide="hash" className="w-3.5 h-3.5 text-emerald-500"></i> Histórico Recente
+                        <div className="bg-zinc-900/50 border border-zinc-800 rounded-[2rem] p-5">
+                            <h3 className="text-[9px] font-black text-zinc-500 uppercase tracking-widest mb-4 flex items-center gap-2 px-2">
+                                <IconHash className="w-3.5 h-3.5 text-emerald-500" /> Histórico Recente
                             </h3>
-                            <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
+                            <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar px-2">
                                 {history.map((n, i) => (
-                                    <div key={`${n}-${i}`} className={`w-9 h-9 shrink-0 rounded-xl flex items-center justify-center font-black text-xs shadow-lg animate-in ${COLORS.red.includes(n) ? 'bg-red-600 text-white' : n === 0 ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-300'}`}>
+                                    <div key={`hist-${i}-${n}`} className={`w-10 h-10 shrink-0 rounded-xl flex items-center justify-center font-black text-xs border border-white/5 animate-in ${COLORS.red.includes(n) ? 'bg-red-600 text-white' : n === 0 ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-300'}`}>
                                         {n}
                                     </div>
                                 ))}
-                                {history.length === 0 && <p className="text-[9px] text-zinc-700 italic font-bold uppercase tracking-widest text-zinc-600">Sem Dados em Cloud</p>}
+                                {history.length === 0 && (
+                                    <div className="flex items-center justify-center w-full py-4 text-[9px] text-zinc-600 uppercase font-black tracking-widest italic">
+                                        Aguardando telemetria...
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -333,6 +313,7 @@
             );
         };
 
+        // Renderização Final
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
     </script>

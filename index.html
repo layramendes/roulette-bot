@@ -1,22 +1,27 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { initializeApp } from 'firebase/app';
+import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
+import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, limit, serverTimestamp } from 'firebase/firestore';
 
-// --- CONFIGURAÇÃO E CONSTANTES ---
-const firebaseConfig = {
-  apiKey: "AIzaSyCUcHQrnU-2312pAFiPzH_35SO3gQ6Wsd4",
-  authDomain: "meubotroleta.firebaseapp.com",
-  projectId: "meubotroleta",
-  storageBucket: "meubotroleta.firebasestorage.app",
-  messagingSenderId: "22051928464",
-  appId: "1:22051928464:web:b58b2604a9b677942adb15"
-};
+// --- CONFIGURAÇÃO AMBIENTE ---
+const firebaseConfig = typeof __firebase_config !== 'undefined' 
+  ? JSON.parse(__firebase_config) 
+  : {
+      apiKey: "AIzaSyCUcHQrnU-2312pAFiPzH_35SO3gQ6Wsd4",
+      authDomain: "meubotroleta.firebaseapp.com",
+      projectId: "meubotroleta",
+      storageBucket: "meubotroleta.firebasestorage.app",
+      messagingSenderId: "22051928464",
+      appId: "1:22051928464:web:b58b2604a9b677942adb15"
+    };
 
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'roulette-pro-v5';
+
+// --- GEOMETRIA DA RODA BRASILEIRA ---
 const WHEEL_ORDER = [0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26];
-
-const SECTORS = {
-  voisins: [22, 18, 29, 7, 28, 12, 35, 3, 26, 0, 32, 15, 19, 4, 21, 2, 25],
-  tiers: [27, 13, 36, 11, 30, 8, 23, 10, 5, 24, 16, 33],
-  orphans: [1, 20, 14, 31, 9, 17, 34, 6]
-};
 
 const COLORS = {
   red: [1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36],
@@ -24,220 +29,228 @@ const COLORS = {
   green: [0]
 };
 
-// --- ÍCONES SVG (EVITA DEPENDÊNCIAS EXTERNAS) ---
-const IconTarget = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>;
-const IconLock = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>;
-const IconZap = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>;
-const IconBrain = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9.5 2A5 5 0 0 1 12 7.33A5 5 0 0 1 14.5 2"/><path d="M12 7.33V22"/><path d="M17 13a5 5 0 1 1-5-5"/><path d="M7 13a5 5 0 1 0 5-5"/></svg>;
+// --- COMPONENTES VISUAIS ---
+const IconRadar = () => (
+  <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-emerald-500/40">
+    <circle cx="12" cy="12" r="10" />
+    <circle cx="12" cy="12" r="6" />
+    <path d="M12 2v2M12 20v2M2 12h2M20 12h2" />
+    <path d="m12 12 4 4" className="animate-pulse" />
+  </svg>
+);
 
 const App = () => {
   const [user, setUser] = useState(null);
   const [history, setHistory] = useState([]);
   const [signal, setSignal] = useState(null);
-  const [isReady, setIsReady] = useState(false);
-  const [scanning, setScanning] = useState(true);
-  const [bankroll, setBankroll] = useState(100);
+  const [analysisProgress, setAnalysisProgress] = useState(0);
+  const [bankroll] = useState(100);
 
-  // Inicialização do Firebase
+  // 1. Autenticação (REGRA 3)
   useEffect(() => {
-    if (!window.firebase.apps.length) {
-      window.firebase.initializeApp(firebaseConfig);
-    }
-    const unsub = window.firebase.auth().onAuthStateChanged((u) => {
-      if (!u) {
-        window.firebase.auth().signInAnonymously();
-      } else {
-        setUser(u);
-        setIsReady(true);
+    const initAuth = async () => {
+      try {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
+        }
+      } catch (err) {
+        console.error("Erro na autenticação:", err);
       }
-    });
-    return () => unsub();
+    };
+    initAuth();
+    const unsubscribe = onAuthStateChanged(auth, setUser);
+    return () => unsubscribe();
   }, []);
 
-  // Listener de Dados em Tempo Real
-  useEffect(() => {
-    if (!user || !isReady) return;
-    const db = window.firebase.firestore();
-    const unsub = db.collection('artifacts').doc('roulette-v5').collection('users').doc(user.uid).collection('spins')
-      .orderBy('timestamp', 'desc').limit(25)
-      .onSnapshot(snap => {
-        const data = snap.docs.map(d => parseInt(d.data().number)).filter(n => !isNaN(n));
-        setHistory(data);
-        analyzeData(data);
-      });
-    return () => unsub();
-  }, [user, isReady]);
-
-  // --- LÓGICA DE ALTA ASSERTIVIDADE (GATILHOS) ---
-  const analyzeData = useCallback((nums) => {
-    if (nums.length < 8) {
-      setScanning(true);
+  // 2. Lógica de Sinais
+  const runAdvancedLogic = useCallback((nums) => {
+    if (nums.length < 5) {
+      setAnalysisProgress((nums.length / 5) * 100);
       setSignal(null);
       return;
     }
 
+    setAnalysisProgress(100);
     const last = nums[0];
-    const recent = nums.slice(0, 10);
     
-    // GATILHO 1: QUEBRA DE COR (5 Seguidos) -> Entrada Confirmada para Inversão
-    const last5Colors = nums.slice(0, 5).map(n => COLORS.red.includes(n) ? 'R' : 'B');
-    if (last5Colors.every(c => c === 'R') || last5Colors.every(c => c === 'B')) {
-      const targetSector = last5Colors[0] === 'R' ? SECTORS.tiers : SECTORS.voisins; // Se muito vermelho, busca zona preta predominante
-      triggerSignal("INVERSÃO DE TENDÊNCIA", targetSector.slice(0, 9), 94);
-      return;
+    // Inversão de Cor (4 seguidos)
+    const colorStreak = nums.slice(0, 4).map(n => COLORS.red.includes(n) ? 'R' : 'B');
+    if (colorStreak.length === 4 && colorStreak.every(c => c === colorStreak[0])) {
+        const oppositeZone = colorStreak[0] === 'R' ? [2, 4, 6, 11, 13, 17, 20, 22] : [1, 3, 5, 9, 12, 14, 16, 18];
+        return setSignal({
+            type: "INVERSÃO DE COR",
+            numbers: oppositeZone,
+            confidence: 88,
+            pivot: oppositeZone[0]
+        });
     }
 
-    // GATILHO 2: CLUSTER DE SETOR (3 números no mesmo setor físico nos últimos 6)
-    const checkSectorCluster = (sector) => nums.slice(0, 6).filter(n => sector.includes(n)).length >= 3;
-    if (checkSectorCluster(SECTORS.voisins)) {
-        triggerSignal("FORÇA VOISINS", SECTORS.voisins.slice(4, 13), 89);
-        return;
-    }
-    if (checkSectorCluster(SECTORS.tiers)) {
-        triggerSignal("FORÇA TIERS", SECTORS.tiers.slice(2, 10), 91);
-        return;
-    }
-
-    // GATILHO 3: REPETIÇÃO DE VIZINHOS (Se um número repete num raio de 3 casas)
+    // Repetição de Vizinhos (Raio de 3)
     const idx = WHEEL_ORDER.indexOf(last);
-    const neighbors = [
-        WHEEL_ORDER[(idx - 1 + 37) % 37],
-        WHEEL_ORDER[(idx + 1) % 37]
-    ];
-    if (nums.slice(1, 8).some(n => neighbors.includes(n))) {
-        // Padrão de vizinhos repetindo - sinal de "Dealer Viciado"
-        const fullNeighbors = [];
-        for(let i = -4; i <= 4; i++) fullNeighbors.push(WHEEL_ORDER[(idx + i + 37) % 37]);
-        triggerSignal("PADRÃO DE REPETIÇÃO", fullNeighbors, 96);
-        return;
+    if (idx !== -1) {
+        const neighbors = [];
+        for(let i=-3; i<=3; i++) neighbors.push(WHEEL_ORDER[(idx + i + 37) % 37]);
+        const repetitions = nums.slice(1, 6).filter(n => neighbors.includes(n));
+        if (repetitions.length >= 2) {
+            return setSignal({
+                type: "ZONA DE IMPACTO",
+                numbers: neighbors,
+                confidence: 94,
+                pivot: last
+            });
+        }
     }
 
-    setScanning(true);
     setSignal(null);
   }, []);
 
-  const triggerSignal = (type, numbers, confidence) => {
-    setScanning(false);
-    setSignal({
-      type,
-      numbers: [...new Set(numbers)], // Remove duplicados
-      confidence,
-      validUntil: Date.now() + 60000 // Válido por 1 minuto
-    });
-  };
-
-  const addSpin = async (n) => {
+  // 3. Monitorização Firestore (REGRA 1 e 2)
+  useEffect(() => {
     if (!user) return;
-    const db = window.firebase.firestore();
-    await db.collection('artifacts').doc('roulette-v5').collection('users').doc(user.uid).collection('spins').add({
-      number: parseInt(n),
-      timestamp: window.firebase.firestore.FieldValue.serverTimestamp()
+    
+    const spinsCollection = collection(db, 'artifacts', appId, 'users', user.uid, 'spins');
+    const q = query(spinsCollection); // Consulta simples (REGRA 2)
+
+    const unsubscribe = onSnapshot(q, (snap) => {
+      const data = snap.docs
+        .map(d => ({ ...d.data(), id: d.id }))
+        .sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0)) // Ordenação em memória (REGRA 2)
+        .map(d => parseInt(d.number))
+        .filter(n => !isNaN(n));
+      
+      setHistory(data.slice(0, 20));
+      runAdvancedLogic(data);
+    }, (err) => {
+      console.error("Erro no Snapshot:", err);
     });
+
+    return () => unsubscribe();
+  }, [user, runAdvancedLogic]);
+
+  // Gravação de Dados
+  const addNumber = async (n) => {
+    if (!user) return;
+    try {
+      const spinsCollection = collection(db, 'artifacts', appId, 'users', user.uid, 'spins');
+      await addDoc(spinsCollection, {
+        number: parseInt(n),
+        timestamp: serverTimestamp()
+      });
+    } catch (e) {
+      console.error("Erro ao gravar número:", e);
+    }
   };
 
-  if (!isReady) return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-black gap-4">
-      <div className="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
-      <p className="text-[10px] font-black text-emerald-500 uppercase tracking-widest animate-pulse">Quantum Kernel v5.0</p>
+  if (!user) return (
+    <div className="min-h-screen bg-black flex items-center justify-center">
+      <div className="text-center space-y-4">
+        <div className="w-10 h-10 border-2 border-emerald-500/20 border-t-emerald-500 rounded-full animate-spin mx-auto"></div>
+        <p className="text-[10px] font-black text-emerald-500 uppercase tracking-widest animate-pulse">Autenticando Kernel V5.2</p>
+      </div>
     </div>
   );
 
   return (
-    <div className="min-h-screen bg-[#050507] text-white p-4 font-sans selection:bg-emerald-500/30">
-      <div className="max-w-md mx-auto space-y-6 pt-4">
+    <div className="min-h-screen bg-[#050507] text-zinc-100 p-4 font-sans select-none">
+      <div className="max-w-md mx-auto space-y-6">
         
-        {/* HUD de Gestão */}
-        <div className="flex justify-between items-center bg-zinc-900/40 p-5 rounded-[2rem] border border-zinc-800 backdrop-blur-md">
+        {/* CABEÇALHO */}
+        <div className="bg-zinc-900/40 p-5 rounded-[2rem] border border-zinc-800 flex justify-between items-center backdrop-blur-md">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-emerald-600 rounded-xl flex items-center justify-center shadow-lg shadow-emerald-900/20">
-              <IconBrain />
+            <div className="w-10 h-10 bg-emerald-600 rounded-2xl flex items-center justify-center shadow-lg shadow-emerald-900/20">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" /></svg>
             </div>
             <div>
-              <h1 className="text-sm font-black tracking-tight uppercase leading-none">Quantum Pro <span className="text-emerald-500">V5</span></h1>
-              <p className="text-[9px] text-zinc-500 font-bold uppercase mt-1 tracking-widest">IA PREDITIVA ATIVA</p>
+              <h1 className="text-xs font-black uppercase tracking-tight">Quantum <span className="text-emerald-500 italic">V5.2 Pro</span></h1>
+              <p className="text-[8px] text-zinc-500 font-bold uppercase tracking-widest mt-0.5">ID: {user.uid.substring(0,8)}...</p>
             </div>
           </div>
           <div className="text-right">
-            <p className="text-[8px] text-zinc-500 font-bold uppercase">Banca Sugerida</p>
-            <p className="text-sm font-black text-emerald-500">R$ {bankroll.toFixed(2)}</p>
+            <p className="text-[8px] text-zinc-500 font-bold uppercase">Banca</p>
+            <p className="text-xs font-black text-emerald-500 tracking-tighter">R$ {bankroll.toFixed(2)}</p>
           </div>
         </div>
 
-        {/* STATUS DO BOT (AGORA COM GATILHO CLARO) */}
-        <div className={`relative overflow-hidden p-8 rounded-[2.5rem] border-2 transition-all duration-500 min-h-[320px] flex flex-col items-center justify-center ${!scanning ? 'bg-emerald-600/5 border-emerald-500 shadow-[0_0_60px_-15px_rgba(16,185,129,0.3)]' : 'bg-zinc-900/20 border-zinc-800'}`}>
+        {/* MONITOR PRINCIPAL */}
+        <div className={`relative min-h-[350px] p-8 rounded-[2.5rem] border-2 transition-all duration-700 flex flex-col items-center justify-center ${signal ? 'bg-emerald-600/10 border-emerald-500 shadow-[0_0_80px_-20px_rgba(16,185,129,0.3)]' : 'bg-zinc-900/30 border-zinc-800'}`}>
           
-          {scanning ? (
-            <div className="text-center space-y-6 animate-in">
-              <div className="relative">
-                <div className="w-20 h-20 border-2 border-zinc-800 rounded-full mx-auto flex items-center justify-center">
-                   <div className="w-12 h-12 border-2 border-zinc-700 border-t-emerald-500 rounded-full animate-spin"></div>
+          {!signal ? (
+            <div className="text-center space-y-8 animate-in">
+              <IconRadar />
+              <div className="space-y-4">
+                <div className="space-y-1">
+                  <h2 className="text-[11px] font-black uppercase tracking-[0.4em] text-zinc-400">Analisando Mesa</h2>
+                  <p className="text-[9px] text-zinc-600 font-bold uppercase">Aguardando Padrão de Entrada</p>
                 </div>
-                <div className="absolute inset-0 flex items-center justify-center">
-                   <IconTarget />
+                
+                <div className="w-48 h-1.5 bg-zinc-800/50 mx-auto rounded-full overflow-hidden border border-zinc-800">
+                  <div 
+                    className="h-full bg-emerald-500 transition-all duration-1000 ease-out"
+                    style={{ width: `${analysisProgress}%` }}
+                  ></div>
                 </div>
-              </div>
-              <div className="space-y-2">
-                <h2 className="text-xs font-black uppercase tracking-[0.3em] text-zinc-400">Escaneando Ciclos...</h2>
-                <p className="text-[10px] text-zinc-600 max-w-[200px] mx-auto leading-relaxed">
-                  Aguardando um padrão de alta probabilidade. Não aposte agora.
+                
+                <p className="text-[9px] text-zinc-500 px-6 leading-relaxed">
+                  {history.length < 5 
+                    ? `Insira mais ${5 - history.length} números para iniciar a leitura.` 
+                    : "Mesa calibrada. Aguardando gatilho de alta assertividade..."}
                 </p>
-              </div>
-              <div className="pt-4 flex gap-2 justify-center">
-                 <span className="text-[8px] bg-zinc-800/50 px-3 py-1 rounded-full text-zinc-500 font-bold uppercase">Mín. 8 Spins</span>
-                 <span className="text-[8px] bg-zinc-800/50 px-3 py-1 rounded-full text-zinc-500 font-bold uppercase">Setores Físicos</span>
               </div>
             </div>
           ) : (
             <div className="w-full space-y-8 animate-in text-center">
-               <div className="flex justify-between items-center w-full px-2">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 bg-emerald-500 rounded-full animate-ping"></div>
-                    <span className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">Entrada Confirmada</span>
-                  </div>
-                  <span className="text-[10px] font-bold text-zinc-400 uppercase">{signal.confidence}% Accuracy</span>
-               </div>
+              <div className="space-y-2">
+                <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-emerald-500 text-black rounded-full shadow-lg shadow-emerald-500/20">
+                  <span className="w-1.5 h-1.5 bg-black rounded-full animate-ping"></span>
+                  <span className="text-[10px] font-black uppercase tracking-widest">Entrada Confirmada</span>
+                </div>
+                <h2 className="text-3xl font-black text-white tracking-tighter uppercase italic">{signal.type}</h2>
+              </div>
 
-               <div className="space-y-4">
-                  <h3 className="text-[11px] font-black uppercase tracking-widest text-zinc-300">Apostar em Plenos:</h3>
-                  <div className="grid grid-cols-4 sm:grid-cols-5 gap-3">
-                    {signal.numbers.map((n, i) => (
-                      <div key={i} className={`h-12 rounded-xl flex flex-col items-center justify-center border-2 border-white/5 shadow-xl transition-all scale-100 hover:scale-105 ${COLORS.red.includes(n) ? 'bg-red-600' : n === 0 ? 'bg-emerald-600' : 'bg-zinc-950'}`}>
-                        <span className="text-xl font-black text-white">{n}</span>
-                        <span className="text-[7px] opacity-40 font-bold">R$ 1.00</span>
-                      </div>
-                    ))}
-                  </div>
-               </div>
+              <div className="space-y-4">
+                <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Cobrir Plenos:</p>
+                <div className="grid grid-cols-4 gap-2">
+                  {signal.numbers.map((n, i) => (
+                    <div key={i} className={`h-12 rounded-xl flex flex-col items-center justify-center border-2 border-white/5 shadow-xl ${COLORS.red.includes(n) ? 'bg-red-600' : n === 0 ? 'bg-emerald-600' : 'bg-zinc-950'}`}>
+                      <span className="text-lg font-black text-white">{n}</span>
+                      <span className="text-[7px] opacity-40 font-bold">R$ 1.00</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
 
-               <div className="grid grid-cols-2 gap-3 pt-4 border-t border-white/5">
-                  <div className="bg-black/40 p-4 rounded-2xl border border-white/5">
-                    <p className="text-[8px] text-zinc-500 font-bold uppercase mb-1">Gatilho de IA</p>
-                    <p className="text-[10px] font-black text-emerald-500 uppercase">{signal.type}</p>
-                  </div>
-                  <div className="bg-black/40 p-4 rounded-2xl border border-white/5">
-                    <p className="text-[8px] text-zinc-500 font-bold uppercase mb-1">Validade</p>
-                    <p className="text-[10px] font-black text-white uppercase">1 SPIN</p>
-                  </div>
-               </div>
+              <div className="grid grid-cols-2 gap-3 pt-4 border-t border-white/5">
+                <div className="bg-black/40 p-3 rounded-2xl border border-white/5">
+                  <p className="text-[8px] text-zinc-500 font-bold uppercase mb-1">Confiança</p>
+                  <p className="text-sm font-black text-emerald-500">{signal.confidence}%</p>
+                </div>
+                <div className="bg-black/40 p-3 rounded-2xl border border-white/5">
+                  <p className="text-[8px] text-zinc-500 font-bold uppercase mb-1">Pivot</p>
+                  <p className="text-sm font-black text-white uppercase">Nº {signal.pivot}</p>
+                </div>
+              </div>
             </div>
           )}
         </div>
 
-        {/* INPUT DE RESULTADOS */}
-        <div className="bg-zinc-900/40 p-6 rounded-[2.5rem] border border-zinc-800 shadow-2xl">
-          <div className="flex justify-between items-center mb-6 px-2">
+        {/* TECLADO DE INPUT */}
+        <div className="bg-zinc-900/50 p-6 rounded-[2.5rem] border border-zinc-800 shadow-2xl">
+          <div className="flex justify-between items-center mb-5 px-1">
              <h3 className="text-[10px] font-black uppercase text-zinc-500 tracking-widest flex items-center gap-2">
-               <IconZap /> Inserir Resultado
+               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M11 2L3 14h9l-1 8 8-12h-9l1-8z"/></svg>
+               Registrar Spin
              </h3>
-             <span className="text-[9px] font-bold text-zinc-600 uppercase">Brasileira Ao Vivo</span>
+             <span className="text-[8px] font-black text-emerald-500/50 uppercase tracking-widest">Brasileira Live</span>
           </div>
-          <div className="grid grid-cols-12 gap-1.5">
-            <button onClick={() => addSpin(0)} className="col-span-12 h-12 bg-emerald-600/20 text-emerald-500 hover:bg-emerald-600 hover:text-white rounded-xl font-black text-lg border border-emerald-500/30 transition-all mb-2 btn-active">0</button>
-            {[3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36, 2, 5, 8, 11, 14, 17, 20, 23, 26, 29, 32, 35, 1, 4, 7, 10, 13, 16, 19, 22, 25, 28, 31, 34].map(n => (
+          <div className="grid grid-cols-6 gap-2">
+            <button onClick={() => addNumber(0)} className="col-span-6 h-12 bg-emerald-600/10 text-emerald-500 hover:bg-emerald-600 hover:text-white rounded-xl font-black text-lg border border-emerald-500/20 transition-all mb-2">0</button>
+            {[3, 6, 9, 12, 15, 18, 2, 5, 8, 11, 14, 17, 1, 4, 7, 10, 13, 16, 21, 24, 27, 30, 33, 36, 20, 23, 26, 29, 32, 35, 19, 22, 25, 28, 31, 34].map(n => (
               <button 
                 key={n} 
-                onClick={() => addSpin(n)} 
-                className={`col-span-2 h-10 flex items-center justify-center font-black text-sm rounded-lg border-b-2 active:scale-90 transition-all text-white btn-active ${COLORS.red.includes(n) ? 'bg-red-600/80 border-red-900' : 'bg-zinc-800 border-black'}`}
+                onClick={() => addNumber(n)} 
+                className={`h-10 flex items-center justify-center font-black text-sm rounded-lg border-b-2 active:scale-90 transition-all text-white ${COLORS.red.includes(n) ? 'bg-red-600/80 border-red-900' : 'bg-zinc-800 border-black'}`}
               >
                 {n}
               </button>
@@ -245,29 +258,25 @@ const App = () => {
           </div>
         </div>
 
-        {/* HISTÓRICO RECENTE */}
-        <div className="bg-zinc-900/20 p-6 rounded-[2rem] border border-zinc-800/50">
-          <div className="flex items-center gap-2 mb-4 px-1">
-             <IconHash className="w-3.5 h-3.5 text-zinc-500" />
-             <h3 className="text-[9px] font-black uppercase text-zinc-500 tracking-widest">Monitor de Ciclo</h3>
-          </div>
-          <div className="flex gap-2.5 overflow-x-auto pb-2 no-scrollbar">
+        {/* HISTÓRICO */}
+        <div className="bg-zinc-900/20 p-5 rounded-[2rem] border border-zinc-800/50">
+          <h3 className="text-[9px] font-black uppercase text-zinc-500 tracking-widest mb-4 px-1">Sequência Analisada</h3>
+          <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
             {history.map((n, i) => (
-              <div key={i} className={`w-9 h-9 shrink-0 rounded-xl flex items-center justify-center font-black text-xs border border-white/5 shadow-md animate-in ${COLORS.red.includes(n) ? 'bg-red-600' : n === 0 ? 'bg-emerald-600' : 'bg-zinc-800'} text-white`}>
+              <div key={i} className={`w-9 h-9 shrink-0 rounded-xl flex items-center justify-center font-black text-xs border border-white/5 animate-in ${COLORS.red.includes(n) ? 'bg-red-600 text-white' : n === 0 ? 'bg-emerald-600 text-black' : 'bg-zinc-800 text-white'}`}>
                 {n}
               </div>
             ))}
-            {history.length === 0 && <p className="text-[9px] text-zinc-700 italic font-bold uppercase tracking-widest p-4">Aguardando telemetria...</p>}
+            {history.length === 0 && <p className="text-[9px] text-zinc-700 font-bold uppercase p-2">Sem Telemetria</p>}
           </div>
         </div>
-
-        <div className="p-4 bg-emerald-500/5 rounded-2xl border border-emerald-500/10 text-center">
-            <p className="text-[9px] font-bold text-emerald-600/80 uppercase tracking-tighter">
-              Dica: Só entre na mesa quando o bot disser "ENTRADA CONFIRMADA".
-            </p>
-        </div>
-
       </div>
+
+      <style>{`
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .animate-in { animation: fade-in 0.5s ease-out forwards; }
+        @keyframes fade-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+      `}</style>
     </div>
   );
 };

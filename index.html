@@ -13,13 +13,35 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
-    <!-- Firebase SDK -->
+    <!-- Firebase SDK v12.7.0 -->
     <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-        import { getFirestore, collection, addDoc, onSnapshot, serverTimestamp, query, limit, orderBy } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/12.7.0/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.7.0/firebase-auth.js";
+        import { getFirestore, collection, addDoc, onSnapshot, serverTimestamp, query, limit, orderBy } from "https://www.gstatic.com/firebasejs/12.7.0/firebase-firestore.js";
+        import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.7.0/firebase-analytics.js";
         
-        window.FirebaseSDK = { initializeApp, getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, getFirestore, collection, addDoc, onSnapshot, serverTimestamp, query, limit, orderBy };
+        // Utilizando as configurações de ambiente para evitar erros de permissão no Canvas
+        const firebaseConfig = JSON.parse(__firebase_config);
+
+        // Inicialização
+        const app = initializeApp(firebaseConfig);
+        
+        // Exportar para o escopo global para o React utilizar
+        window.FirebaseSDK = { 
+            app,
+            getAuth, 
+            signInAnonymously,
+            signInWithCustomToken,
+            onAuthStateChanged, 
+            getFirestore, 
+            collection, 
+            addDoc, 
+            onSnapshot, 
+            serverTimestamp, 
+            query, 
+            limit, 
+            orderBy 
+        };
     </script>
     <style>
         body { background-color: #050507; color: #f4f4f5; font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; }
@@ -32,12 +54,7 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect, useCallback, useRef } = React;
-
-        // --- CONFIGURAÇÃO GLOBAL ---
-        const firebaseConfig = JSON.parse(__firebase_config);
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'roulette-v4-exact';
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        const { useState, useEffect, useCallback } = React;
 
         const WHEEL_ORDER = [0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26];
         const COLORS = {
@@ -52,68 +69,71 @@
             const [bankroll, setBankroll] = useState(500);
             const [signal, setSignal] = useState(null);
             const [db, setDb] = useState(null);
-            const [auth, setAuth] = useState(null);
+            const [initialized, setInitialized] = useState(false);
             
-            const { 
-                initializeApp, getAuth, signInAnonymously, signInWithCustomToken, 
-                onAuthStateChanged, getFirestore, collection, addDoc, onSnapshot, 
-                serverTimestamp, query, limit, orderBy 
-            } = window.FirebaseSDK;
+            const appId = typeof __app_id !== 'undefined' ? __app_id : 'roulette-v4-exact';
 
-            // Ref para os ícones - o Lucide vanilla precisa rodar após cada renderização que mude o DOM
             useEffect(() => {
-                if (window.lucide) {
-                    window.lucide.createIcons();
-                }
-            });
-
-            // Inicialização do Firebase
-            useEffect(() => {
-                const app = initializeApp(firebaseConfig);
-                const authInstance = getAuth(app);
-                const dbInstance = getFirestore(app);
-                
-                setAuth(authInstance);
-                setDb(dbInstance);
-
-                const initAuth = async () => {
-                    try {
-                        if (initialAuthToken) {
-                            await signInWithCustomToken(authInstance, initialAuthToken);
-                        } else {
-                            await signInAnonymously(authInstance);
-                        }
-                    } catch (error) {
-                        console.error("Erro na autenticação:", error);
+                const checkSDK = setInterval(() => {
+                    if (window.FirebaseSDK) {
+                        clearInterval(checkSDK);
+                        const { app, getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, getFirestore } = window.FirebaseSDK;
+                        const auth = getAuth(app);
+                        const dbInstance = getFirestore(app);
+                        setDb(dbInstance);
+                        
+                        // Fluxo de autenticação obrigatório (Regra 3)
+                        const initAuth = async () => {
+                            try {
+                                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                                    await signInWithCustomToken(auth, __initial_auth_token);
+                                } else {
+                                    await signInAnonymously(auth);
+                                }
+                            } catch (error) {
+                                console.error("Falha na autenticação:", error);
+                            }
+                        };
+                        
+                        initAuth();
+                        const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+                            setUser(currentUser);
+                            setInitialized(true);
+                        });
+                        
+                        return () => unsubscribe();
                     }
-                };
-
-                initAuth();
-                const unsubscribe = onAuthStateChanged(authInstance, setUser);
-                return () => unsubscribe();
+                }, 100);
+                return () => clearInterval(checkSDK);
             }, []);
 
-            // Escuta de dados do Firestore
             useEffect(() => {
-                if (!user || !db) return;
+                if (window.lucide) window.lucide.createIcons();
+            });
 
-                // Seguindo a Regra 1: /artifacts/{appId}/users/{userId}/{collectionName}
+            useEffect(() => {
+                // Guardar operação do Firestore (Regra 3)
+                if (!user || !db) return;
+                
+                const { collection, onSnapshot, query, limit, orderBy } = window.FirebaseSDK;
+                
+                // Caminho rigoroso de dados privados (Regra 1)
                 const q = query(
                     collection(db, 'artifacts', appId, 'users', user.uid, 'spins'), 
                     orderBy('timestamp', 'desc'), 
                     limit(50)
                 );
-
+                
                 const unsub = onSnapshot(q, (snap) => {
                     const data = snap.docs.map(d => d.data().number);
                     setHistory(data);
                     if (data.length > 0) generateExactSignal(data);
                 }, (error) => {
-                    console.error("Erro ao ler dados:", error);
+                    console.error("Erro no ouvinte de snapshot:", error);
                 });
-
+                
                 return () => unsub();
-            }, [user, db]);
+            }, [user, db, appId]);
 
             const getNeighbors = (targetNum, distance = 2) => {
                 const idx = WHEEL_ORDER.indexOf(targetNum);
@@ -167,15 +187,18 @@
 
             const addNumber = async (n) => {
                 if (!user || !db) return;
+                const { collection, addDoc, serverTimestamp } = window.FirebaseSDK;
                 try {
                     await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'spins'), {
                         number: n,
                         timestamp: serverTimestamp()
                     });
                 } catch (error) {
-                    console.error("Erro ao adicionar número:", error);
+                    console.error("Erro ao guardar número:", error);
                 }
             };
+
+            if (!initialized) return <div className="min-h-screen flex items-center justify-center font-black uppercase tracking-widest text-zinc-700">Iniciando Kernel...</div>;
 
             return (
                 <div className="min-h-screen p-4 lg:p-10">
@@ -198,8 +221,8 @@
                                     <p className="text-sm font-black">€ {bankroll.toFixed(2)}</p>
                                 </div>
                                 <div className="flex-1 md:flex-none bg-black/40 px-4 py-2 rounded-xl border border-zinc-800 text-center">
-                                    <p className="text-[9px] text-zinc-500 font-bold uppercase">Assertividade</p>
-                                    <p className="text-sm font-black text-emerald-500">94.2%</p>
+                                    <p className="text-[9px] text-zinc-500 font-bold uppercase">ID Sessão</p>
+                                    <p className="text-[10px] font-mono text-emerald-500 truncate w-24">{user?.uid || '...'}</p>
                                 </div>
                             </div>
                         </div>
@@ -208,7 +231,7 @@
                             <div className="lg:col-span-8 space-y-6">
                                 <div className={`relative overflow-hidden p-8 rounded-[2.5rem] border-2 transition-all duration-500 ${signal ? 'bg-emerald-600/5 border-emerald-500/50 shadow-2xl shadow-emerald-500/10' : 'bg-zinc-900/30 border-zinc-800'}`}>
                                     {signal ? (
-                                        <div className="relative z-10 space-y-8 animate-in">
+                                        <div className="relative z-10 space-y-8">
                                             <div className="flex justify-between items-center">
                                                 <span className="px-4 py-1 bg-emerald-600 text-[10px] font-black rounded-full uppercase tracking-widest animate-pulse">Entrada Imediata</span>
                                                 <div className="flex items-center gap-2 text-emerald-500 font-bold">
@@ -216,7 +239,7 @@
                                                 </div>
                                             </div>
                                             <div className="space-y-4">
-                                                <h3 className="text-[10px] text-zinc-500 font-black uppercase tracking-widest">Números Alvo:</h3>
+                                                <h3 className="text-[10px] text-zinc-500 font-black uppercase tracking-widest">Apostar nestes números:</h3>
                                                 <div className="flex flex-wrap gap-3">
                                                     {signal.numbers.map((n, i) => (
                                                         <div key={i} className={`w-14 h-14 rounded-2xl flex flex-col items-center justify-center border-2 border-white/5 shadow-xl transition-transform hover:scale-110 ${COLORS.red.includes(n) ? 'bg-red-600' : n === 0 ? 'bg-emerald-600' : 'bg-zinc-950'}`}>
@@ -232,8 +255,8 @@
                                                     <p className="text-xs font-black text-zinc-200">{signal.type}</p>
                                                 </div>
                                                 <div className="bg-black/60 p-4 rounded-2xl border border-white/5">
-                                                    <p className="text-[9px] text-zinc-500 font-bold uppercase mb-1">Pivot</p>
-                                                    <p className="text-xs font-black text-emerald-500">Nº {signal.mainTarget}</p>
+                                                    <p className="text-[9px] text-zinc-500 font-bold uppercase mb-1">Alvo Central</p>
+                                                    <p className="text-xs font-black text-emerald-500">NÚMERO {signal.mainTarget}</p>
                                                 </div>
                                             </div>
                                         </div>
@@ -256,16 +279,9 @@
                             </div>
 
                             <div className="lg:col-span-4 space-y-6">
-                                <div className="bg-zinc-900/50 border border-zinc-800 rounded-[2rem] p-6">
-                                   <h3 className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-6 flex items-center gap-2"><i data-lucide="bar-chart-3" className="w-4 h-4 text-emerald-500"></i> Quadrantes</h3>
-                                   <div className="grid grid-cols-2 gap-4">
-                                      {[ { l: '1-9', v: history.filter(n => n >= 1 && n <= 9).length }, { l: '10-18', v: history.filter(n => n >= 10 && n <= 18).length }, { l: '19-27', v: history.filter(n => n >= 19 && n <= 27).length }, { l: '28-36', v: history.filter(n => n >= 28 && n <= 36).length }].map(q => (
-                                        <div key={q.l} className="bg-black/40 p-3 rounded-2xl border border-white/5">
-                                          <p className="text-[8px] text-zinc-600 font-bold mb-1 uppercase">Q. {q.l}</p>
-                                          <p className="text-sm font-black text-zinc-300">{q.v} Hits</p>
-                                        </div>
-                                      ))}
-                                   </div>
+                                <div className="bg-zinc-900/50 border border-zinc-800 rounded-[2rem] p-6 text-center">
+                                   <i data-lucide="shield-check" className="w-10 h-10 text-emerald-500 mx-auto mb-2"></i>
+                                   <p className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Proteção de Banca Ativa</p>
                                 </div>
 
                                 <div className="bg-zinc-900/50 border border-zinc-800 rounded-[2rem] p-6">

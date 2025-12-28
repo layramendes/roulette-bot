@@ -19,6 +19,7 @@
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-auth.js";
         import { getFirestore, collection, addDoc, onSnapshot, serverTimestamp, query, limit, orderBy } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-firestore.js";
         
+        // Configuração oficial preservada
         const firebaseConfig = {
             apiKey: "AIzaSyCUcHQrnU-2312pAFiPzH_35SO3gQ6Wsd4",
             authDomain: "meubotroleta.firebaseapp.com",
@@ -45,7 +46,7 @@
                 orderBy 
             };
         } catch (e) {
-            console.error("Firebase Init Error:", e);
+            console.error("Erro crítico de inicialização:", e);
         }
     </script>
     <style>
@@ -62,6 +63,7 @@
     <script type="text/babel">
         const { useState, useEffect, useCallback, useRef } = React;
 
+        // Ordem Europeia Fixa
         const WHEEL_ORDER = [0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26];
         const COLORS = {
             red: [1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36],
@@ -72,19 +74,19 @@
         const App = () => {
             const [user, setUser] = useState(null);
             const [history, setHistory] = useState([]);
-            const [bankroll, setBankroll] = useState(100); // Banca iniciada em 100 Reais
+            const [bankroll, setBankroll] = useState(100);
             const [signal, setSignal] = useState(null);
             const [db, setDb] = useState(null);
             const [initialized, setInitialized] = useState(false);
-            const [error, setError] = useState(null);
+            const [errorMsg, setErrorMsg] = useState(null);
             
             const appId = 'roulette-v4-exact';
 
-            // 1. Inicialização Segura
+            // 1. Hook de Inicialização Robusta
             useEffect(() => {
-                const checkSDK = setInterval(() => {
+                const checkInterval = setInterval(() => {
                     if (window.FirebaseSDK) {
-                        clearInterval(checkSDK);
+                        clearInterval(checkInterval);
                         try {
                             const { app, getAuth, signInAnonymously, onAuthStateChanged, getFirestore } = window.FirebaseSDK;
                             const auth = getAuth(app);
@@ -92,8 +94,8 @@
                             setDb(dbInstance);
                             
                             signInAnonymously(auth).catch(err => {
-                                console.error("Auth Erro:", err);
-                                setError("Falha na autenticação anónima.");
+                                console.error("Erro Auth:", err);
+                                setErrorMsg("Erro na autenticação anónima.");
                             });
 
                             onAuthStateChanged(auth, (currentUser) => {
@@ -101,21 +103,83 @@
                                 setInitialized(true);
                             });
                         } catch (e) {
-                            setError("Erro ao carregar módulos Firebase.");
+                            setErrorMsg("Falha ao configurar ambiente Firebase.");
                         }
                     }
-                }, 100);
-                return () => clearInterval(checkSDK);
+                }, 150);
+                return () => clearInterval(checkInterval);
             }, []);
 
-            // 2. Refresh de Ícones
+            // 2. Atualização dos Ícones (Evita erros de DOM)
             useEffect(() => {
                 if (window.lucide && initialized) {
-                    window.lucide.createIcons();
+                    try { window.lucide.createIcons(); } catch(e) {}
                 }
             }, [initialized, signal, history]);
 
-            // 3. Listener de Dados
+            // 3. Auxiliar: Vizinhos na Roda
+            const getNeighbors = (targetNum, distance = 2) => {
+                const idx = WHEEL_ORDER.indexOf(Number(targetNum));
+                if (idx === -1) return [];
+                const result = [];
+                for (let i = -distance; i <= distance; i++) {
+                    const pos = (idx + i + 37) % 37;
+                    result.push(WHEEL_ORDER[pos]);
+                }
+                return result;
+            };
+
+            // 4. Gerador de Sinais Blindado
+            const generateExactSignal = useCallback((nums) => {
+                if (!nums || nums.length < 5) return;
+
+                try {
+                    const last = nums[0];
+                    const last5 = nums.slice(0, 5);
+                    let targetNums = [];
+                    let strategyType = "ANÁLISE DE FLUXO";
+                    let confidenceLevel = 85;
+
+                    // Estratégia 1: Clusters (Repetições Próximas)
+                    const counts = {};
+                    nums.slice(0, 20).forEach(n => counts[n] = (counts[n] || 0) + 1);
+                    const hotEntries = Object.entries(counts).sort((a,b) => b[1]-a[1]);
+                    
+                    if (hotEntries.length > 0 && hotEntries[0][1] >= 2) {
+                        const hotNum = parseInt(hotEntries[0][0]);
+                        targetNums = getNeighbors(hotNum, 3);
+                        strategyType = "CLUSTER DE FREQUÊNCIA";
+                        confidenceLevel = 92;
+                    } 
+                    // Estratégia 2: Variância de Cor
+                    else if (last5.filter(n => COLORS.red.includes(n)).length >= 4) {
+                        targetNums = [2, 4, 6, 11, 13, 15, 17, 20]; 
+                        strategyType = "INVERSÃO ZONA PRETA";
+                        confidenceLevel = 88;
+                    } 
+                    // Estratégia 3: Oposição Física
+                    else {
+                        const oppositeIdx = (WHEEL_ORDER.indexOf(last) + 18) % 37;
+                        targetNums = getNeighbors(WHEEL_ORDER[oppositeIdx], 2);
+                        strategyType = "SALTO DE RODA (OPOSIÇÃO)";
+                        confidenceLevel = 85;
+                    }
+
+                    // Garantia final contra array vazio (evita o crash da tela preta)
+                    if (targetNums && targetNums.length > 0) {
+                        setSignal({
+                            numbers: targetNums,
+                            type: strategyType,
+                            confidence: confidenceLevel,
+                            mainTarget: targetNums[Math.floor(targetNums.length / 2)]
+                        });
+                    }
+                } catch (err) {
+                    console.error("Erro na lógica do sinal:", err);
+                }
+            }, []);
+
+            // 5. Listener de Dados em Tempo Real
             useEffect(() => {
                 if (!user || !db) return;
                 try {
@@ -132,70 +196,20 @@
                         }
                     }, (err) => {
                         console.error("Snapshot Erro:", err);
-                        setError("Erro ao ler dados da nuvem.");
                     });
                     
                     return () => unsub();
                 } catch (e) {
-                    console.error("Firestore Effect Error:", e);
+                    console.error("Efeito de Snapshot falhou:", e);
                 }
-            }, [user, db]);
-
-            const getNeighbors = (targetNum, distance = 2) => {
-                const idx = WHEEL_ORDER.indexOf(targetNum);
-                if (idx === -1) return [];
-                const result = [];
-                for (let i = -distance; i <= distance; i++) {
-                    const pos = (idx + i + 37) % 37;
-                    result.push(WHEEL_ORDER[pos]);
-                }
-                return result;
-            };
-
-            const generateExactSignal = useCallback((nums) => {
-                try {
-                    const last = nums[0];
-                    const last5 = nums.slice(0, 5);
-                    let targetNums = [];
-                    let type = "ANÁLISE DE FLUXO";
-                    let confidence = 85;
-
-                    const counts = {};
-                    nums.slice(0, 20).forEach(n => counts[n] = (counts[n] || 0) + 1);
-                    const hotEntries = Object.entries(counts).sort((a,b) => b[1]-a[1]);
-                    
-                    if (hotEntries.length > 0 && hotEntries[0][1] >= 2) {
-                        targetNums = getNeighbors(parseInt(hotEntries[0][0]), 3);
-                        type = "CLUSTER DE FREQUÊNCIA";
-                        confidence = 92;
-                    } else if (last5.filter(n => COLORS.red.includes(n)).length >= 4) {
-                        targetNums = [2, 4, 6, 11, 13, 15, 17, 20]; 
-                        type = "INVERSÃO ZONA PRETA";
-                        confidence = 88;
-                    } else {
-                        const oppositeIdx = (WHEEL_ORDER.indexOf(last) + 18) % 37;
-                        targetNums = getNeighbors(WHEEL_ORDER[oppositeIdx], 2);
-                        type = "SALTO DE RODA (OPOSIÇÃO)";
-                        confidence = 85;
-                    }
-
-                    setSignal({
-                        numbers: targetNums || [],
-                        type: type,
-                        confidence: confidence,
-                        mainTarget: targetNums.length > 0 ? targetNums[Math.floor(targetNums.length/2)] : 0
-                    });
-                } catch (e) {
-                    console.error("Signal Logic Error:", e);
-                }
-            }, []);
+            }, [user, db, generateExactSignal]);
 
             const addNumber = async (n) => {
                 if (!user || !db) return;
                 try {
                     const { collection, addDoc, serverTimestamp } = window.FirebaseSDK;
                     await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'spins'), {
-                        number: n,
+                        number: Number(n),
                         timestamp: serverTimestamp()
                     });
                 } catch (error) { 
@@ -203,13 +217,13 @@
                 }
             };
 
-            if (error) {
+            if (errorMsg) {
                 return (
                     <div className="min-h-screen flex flex-col items-center justify-center bg-[#050507] p-10 text-center">
                         <i data-lucide="alert-octagon" className="w-16 h-16 text-red-500 mb-4"></i>
-                        <h2 className="text-xl font-bold mb-2">Erro de Conexão</h2>
-                        <p className="text-zinc-500 text-sm mb-6">{error}</p>
-                        <button onClick={() => window.location.reload()} className="px-6 py-2 bg-zinc-800 rounded-xl font-bold">Tentar Novamente</button>
+                        <h2 className="text-xl font-bold mb-2">Interface em Pânico</h2>
+                        <p className="text-zinc-500 text-sm mb-6">{errorMsg}</p>
+                        <button onClick={() => window.location.reload()} className="px-6 py-2 bg-emerald-600 rounded-xl font-bold text-white uppercase text-xs">Reiniciar Kernel</button>
                     </div>
                 );
             }
@@ -217,8 +231,8 @@
             if (!initialized) {
                 return (
                     <div className="min-h-screen flex flex-col items-center justify-center bg-[#050507] text-zinc-500 gap-4">
-                        <div className="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
-                        <p className="text-[10px] font-black uppercase tracking-[0.5em] animate-pulse">Quantum Kernel v4.1</p>
+                        <div className="w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+                        <p className="text-[10px] font-black uppercase tracking-[0.5em] animate-pulse">Sincronizando Firebase...</p>
                     </div>
                 );
             }
@@ -226,7 +240,7 @@
             return (
                 <div className="min-h-screen p-4 lg:p-10 pb-20">
                     <div className="max-w-5xl mx-auto space-y-8 animate-in">
-                        {/* Header HUD */}
+                        {/* HUD Superior */}
                         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-zinc-900/50 p-6 rounded-[2rem] border border-zinc-800 shadow-2xl">
                             <div className="flex items-center gap-4">
                                 <div className="p-3 bg-emerald-600 rounded-2xl shadow-lg">
@@ -235,26 +249,26 @@
                                 <div>
                                     <h1 className="text-xl font-black tracking-tighter uppercase leading-none">Quantum <span className="text-emerald-500">V4 Pro</span></h1>
                                     <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest mt-1 flex items-center gap-2">
-                                        <i data-lucide="activity" className="w-3 h-3 text-emerald-500"></i> Analisador Estocástico
+                                        <i data-lucide="activity" className="w-3 h-3 text-emerald-500"></i> Motor de Analise Blindado
                                     </p>
                                 </div>
                             </div>
                             <div className="flex gap-4 w-full md:w-auto">
                                 <div className="flex-1 md:flex-none bg-black/40 px-5 py-3 rounded-2xl border border-zinc-800 text-center">
-                                    <p className="text-[9px] text-zinc-500 font-bold uppercase">Banca</p>
+                                    <p className="text-[9px] text-zinc-500 font-bold uppercase tracking-tighter">Banca</p>
                                     <p className="text-sm font-black text-white">R$ {bankroll.toFixed(2)}</p>
                                 </div>
-                                <div className="flex-1 md:flex-none bg-black/40 px-5 py-3 rounded-2xl border border-zinc-800 text-center">
-                                    <p className="text-[9px] text-zinc-500 font-bold uppercase">Sessão</p>
-                                    <p className="text-[10px] font-mono text-emerald-500 truncate w-20 mx-auto">{user?.uid || '...'}</p>
+                                <div className="flex-1 md:flex-none bg-black/40 px-5 py-3 rounded-2xl border border-zinc-800 text-center overflow-hidden">
+                                    <p className="text-[9px] text-zinc-500 font-bold uppercase tracking-tighter">Sessão Ativa</p>
+                                    <p className="text-[9px] font-mono text-emerald-500 truncate w-16 mx-auto">{user?.uid || '...'}</p>
                                 </div>
                             </div>
                         </div>
 
                         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-                            {/* Operação Central */}
+                            {/* Painel Central */}
                             <div className="lg:col-span-8 space-y-6">
-                                <div className={`relative overflow-hidden p-8 rounded-[2.5rem] border-2 transition-all duration-700 ${signal ? 'bg-emerald-600/5 border-emerald-500/50 shadow-[0_0_50px_-10px_rgba(16,185,129,0.2)]' : 'bg-zinc-900/30 border-zinc-800 opacity-60'}`}>
+                                <div className={`relative overflow-hidden p-8 rounded-[2.5rem] border-2 transition-all duration-700 ${signal ? 'bg-emerald-600/5 border-emerald-500/50 shadow-[0_0_50px_-10px_rgba(16,185,129,0.2)]' : 'bg-zinc-900/30 border-zinc-800'}`}>
                                     {signal ? (
                                         <div className="relative z-10 space-y-8 animate-in">
                                             <div className="flex justify-between items-center">
@@ -268,12 +282,12 @@
                                             </div>
 
                                             <div className="space-y-4">
-                                                <h3 className="text-[10px] text-zinc-500 font-black uppercase tracking-[0.2em] mb-4">Apostar nestes números:</h3>
+                                                <h3 className="text-[10px] text-zinc-500 font-black uppercase tracking-[0.2em] mb-4">Números para entrada:</h3>
                                                 <div className="grid grid-cols-4 sm:grid-cols-8 gap-3">
                                                     {signal.numbers && signal.numbers.map((n, i) => (
-                                                        <div key={`${n}-${i}`} className={`h-14 rounded-2xl flex flex-col items-center justify-center border-2 border-white/5 shadow-xl transition-all hover:scale-110 active:scale-90 ${COLORS.red.includes(n) ? 'bg-red-600' : n === 0 ? 'bg-emerald-600' : 'bg-zinc-950'}`}>
+                                                        <div key={`sig-${n}-${i}`} className={`h-14 rounded-2xl flex flex-col items-center justify-center border-2 border-white/5 shadow-xl transition-all hover:scale-110 active:scale-90 ${COLORS.red.includes(n) ? 'bg-red-600' : n === 0 ? 'bg-emerald-600' : 'bg-zinc-950'}`}>
                                                             <span className="text-xl font-black">{n}</span>
-                                                            <span className="text-[7px] opacity-40 font-bold">R$ 1.00</span>
+                                                            <span className="text-[7px] opacity-40 font-bold uppercase">R$ 1.00</span>
                                                         </div>
                                                     ))}
                                                 </div>
@@ -281,24 +295,24 @@
 
                                             <div className="grid grid-cols-2 gap-4 pt-4 border-t border-white/5">
                                                 <div className="bg-black/60 p-4 rounded-2xl border border-white/5">
-                                                    <p className="text-[9px] text-zinc-500 font-bold uppercase mb-1 tracking-tighter">Estratégia</p>
+                                                    <p className="text-[9px] text-zinc-500 font-bold uppercase mb-1 tracking-tighter">Algoritmo</p>
                                                     <p className="text-[10px] font-black text-zinc-200">{signal.type}</p>
                                                 </div>
                                                 <div className="bg-black/60 p-4 rounded-2xl border border-white/5">
-                                                    <p className="text-[9px] text-zinc-500 font-bold uppercase mb-1 tracking-tighter">Foco da Roda</p>
-                                                    <p className="text-[10px] font-black text-emerald-500 uppercase">Pivot {signal.mainTarget}</p>
+                                                    <p className="text-[9px] text-zinc-500 font-bold uppercase mb-1 tracking-tighter">Pivô da Roda</p>
+                                                    <p className="text-[10px] font-black text-emerald-500 uppercase">Focar nº {signal.mainTarget}</p>
                                                 </div>
                                             </div>
                                         </div>
                                     ) : (
                                         <div className="py-24 text-center space-y-4 opacity-20">
                                             <i data-lucide="refresh-cw" className="w-12 h-12 mx-auto animate-spin"></i>
-                                            <p className="text-[10px] font-black uppercase tracking-[0.5em]">Aguardando Dados (Mín. 5)</p>
+                                            <p className="text-[10px] font-black uppercase tracking-[0.5em]">Aguardando Fluxo de Dados (Mín. 5)</p>
                                         </div>
                                     )}
                                 </div>
 
-                                {/* Teclado de Input */}
+                                {/* Teclado */}
                                 <div className="bg-zinc-900/50 border border-zinc-800 p-8 rounded-[2.5rem] shadow-2xl">
                                     <div className="grid grid-cols-12 gap-2">
                                         <button onClick={() => addNumber(0)} className="col-span-12 h-14 bg-emerald-600 hover:bg-emerald-500 rounded-2xl font-black text-xl border-b-4 border-emerald-800 active:scale-95 transition-all mb-2 btn-active">0</button>
@@ -315,31 +329,31 @@
                                 </div>
                             </div>
 
-                            {/* Sidebar Analytics */}
+                            {/* Lateral Analytics */}
                             <div className="lg:col-span-4 space-y-6">
                                 <div className="bg-zinc-900/50 border border-zinc-800 rounded-[2.5rem] p-8 text-center space-y-4 shadow-xl">
                                    <div className="w-16 h-16 bg-emerald-500/10 rounded-full flex items-center justify-center mx-auto shadow-inner border border-emerald-500/20">
                                        <i data-lucide="shield-check" className="w-8 h-8 text-emerald-500"></i>
                                    </div>
-                                   <p className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">Proteção de Banca</p>
-                                   <p className="text-[9px] text-zinc-600 leading-relaxed italic">Algoritmo validado para stop-loss dinâmico.</p>
+                                   <p className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">Proteção de Banca Quantum</p>
+                                   <p className="text-[9px] text-zinc-600 leading-relaxed italic">Algoritmo validado para mitigação de variância.</p>
                                 </div>
 
                                 <div className="bg-zinc-900/50 border border-zinc-800 rounded-[2.5rem] p-8 shadow-xl">
                                    <h3 className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-6 flex items-center gap-2">
-                                       <i data-lucide="hash" className="w-4 h-4 text-emerald-500"></i> Últimos 8 Spins
+                                       <i data-lucide="hash" className="w-4 h-4 text-emerald-500"></i> Últimos 8 Resultados
                                    </h3>
                                    <div className="space-y-3">
                                       {history.slice(0, 8).map((n, i) => (
-                                        <div key={`hist-${i}`} className="flex justify-between items-center p-3 bg-black/30 rounded-2xl border border-white/5 animate-in">
+                                        <div key={`hist-${n}-${i}`} className="flex justify-between items-center p-3 bg-black/30 rounded-2xl border border-white/5 animate-in">
                                           <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-black text-sm shadow-lg ${COLORS.red.includes(n) ? 'bg-red-600' : n === 0 ? 'bg-emerald-600' : 'bg-zinc-800'}`}>{n}</div>
                                           <div className="text-right">
-                                              <p className="text-[9px] font-black text-zinc-400 uppercase tracking-tighter">{COLORS.red.includes(n) ? 'Red' : n === 0 ? 'Zero' : 'Black'}</p>
+                                              <p className="text-[9px] font-black text-zinc-400 uppercase tracking-tighter">{COLORS.red.includes(n) ? 'Vermelho' : n === 0 ? 'Zero' : 'Preto'}</p>
                                               <p className="text-[8px] text-zinc-700 uppercase tracking-tighter">{i === 0 ? 'Agora' : `${i} spins atrás`}</p>
                                           </div>
                                         </div>
                                       ))}
-                                      {history.length === 0 && <p className="text-center py-10 text-[10px] font-bold text-zinc-800 uppercase tracking-[0.2em]">Sem telemetria</p>}
+                                      {history.length === 0 && <p className="text-center py-10 text-[10px] font-bold text-zinc-800 uppercase tracking-[0.2em]">Sem Telemetria</p>}
                                    </div>
                                 </div>
                             </div>

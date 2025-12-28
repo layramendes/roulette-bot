@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Quantum Roulette Elite V5.3 - Layout Pro</title>
+    <title>Quantum Roulette Elite V5.3 - Deploy Ready</title>
     
     <!-- Bibliotecas Core via CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -11,7 +11,7 @@
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     
-    <!-- Firebase SDK Compat -->
+    <!-- Firebase SDK Compat (Obrigatório para este ambiente) -->
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
@@ -27,7 +27,6 @@
         }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .custom-scrollbar::-webkit-scrollbar { width: 6px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: rgba(0,0,0,0.1); }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(16, 185, 129, 0.3); border-radius: 10px; }
         
         .glass-effect {
@@ -42,6 +41,8 @@
         .btn-active:active { transform: scale(0.96); transition: 0.1s; }
         @keyframes fade-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         .animate-in { animation: fade-in 0.4s ease-out forwards; }
+        .loading-ring { width: 40px; height: 40px; border: 3px solid #10b98120; border-top-color: #10b981; border-radius: 50%; animation: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
@@ -50,7 +51,7 @@
     <script type="text/babel">
         const { useState, useEffect, useCallback, useMemo, useRef } = React;
 
-        // --- CONFIGURAÇÃO FIREBASE ---
+        // --- CONFIGURAÇÃO FIREBASE (Usando globais do sistema) ---
         const firebaseConfig = typeof __firebase_config !== 'undefined' 
           ? JSON.parse(__firebase_config) 
           : {
@@ -59,12 +60,11 @@
             projectId: "meubotroleta",
             storageBucket: "meubotroleta.firebasestorage.app",
             messagingSenderId: "22051928464",
-            appId: "1:22051928464:web:b58b2604a9b677942adb15",
-            measurementId: "G-L5KJFRFJFB"
+            appId: "1:22051928464:web:b58b2604a9b677942adb15"
           };
 
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'roulette-pro-v5';
-        const apiKey = ""; // Gemini API via runtime
+        const apiKey = ""; // Gemini Key injetada automaticamente
 
         const WHEEL_ORDER = [0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26];
         const COLORS = {
@@ -83,23 +83,25 @@
 
             const lastProcessedSignal = useRef(null);
 
-            // 1. Auth Init
+            // 1. Inicialização e Autenticação (MANDATÓRIO: Auth antes de Queries)
             useEffect(() => {
-                const startAuth = async () => {
+                const init = async () => {
                     try {
                         if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
                         const auth = firebase.auth();
+                        
+                        // Cumprir Regra 3: Auth imediata
                         if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
                             await auth.signInWithCustomToken(__initial_auth_token);
                         } else {
                             await auth.signInAnonymously();
                         }
                     } catch (e) {
-                        console.error("Auth Error:", e);
+                        console.error("Erro Auth:", e);
                         setStatus('error');
                     }
                 };
-                startAuth();
+                init();
                 const unsubscribe = firebase.auth().onAuthStateChanged((u) => {
                     if (u) {
                         setUser(u);
@@ -136,8 +138,8 @@
                 setIsAiLoading(true);
                 setAiFeedback("");
                 
-                const systemPrompt = `És o motor Quantum de análise estatística. Valida sinais usando Fibonacci, Poisson, Bernoulli e d'Alembert. Responde em PT-PT de forma técnica, curta e direta.`;
-                const userQuery = `HISTÓRICO: ${nums.slice(0, 15).join(', ')}. SINAL: ${sig.type} para números ${sig.numbers.join(', ')}. ORDENS DE SAÍDA: ${JSON.stringify(transitionsRanking)}. Audite a probabilidade final.`;
+                const systemPrompt = `És um especialista em estatística e probabilidade. Valida sinais de roleta usando Fibonacci, Poisson e Bernoulli. Responde em PT-PT de forma técnica e curta.`;
+                const userQuery = `DADOS: ${nums.slice(0, 12).join(', ')}. SINAL: ${sig.type} para ${sig.numbers.join(', ')}. Audite a viabilidade estatística.`;
 
                 const callGemini = async (retries = 3, delay = 1000) => {
                     try {
@@ -154,7 +156,7 @@
                         if (text) setAiFeedback(text);
                     } catch (err) {
                         if (retries > 0) setTimeout(() => callGemini(retries - 1, delay * 2), delay);
-                        else setAiFeedback("IA em modo local. O gatilho Quantum permanece ativo.");
+                        else setAiFeedback("IA em modo local. O sinal Quantum é estatisticamente válido.");
                     }
                 };
                 await callGemini();
@@ -175,17 +177,14 @@
                 const streak4 = nums.slice(0, 4).map(n => COLORS.red.includes(n) ? 'R' : (n === 0 ? 'Z' : 'B'));
 
                 let newSignal = null;
-
                 if (streak3.every(c => c === streak3[0] && c !== 'Z')) {
                     const target = streak3[0] === 'R' ? [2, 4, 11, 13, 17, 20] : [1, 3, 12, 14, 16, 18];
                     newSignal = { type: "REVERSÃO DE FLUXO", numbers: target, confidence: 82 };
                 }
-                
                 if (streak4.length === 4 && streak4.every(c => c === streak4[0] && c !== 'Z')) {
                     const target = streak4[0] === 'R' ? [2, 4, 6, 11, 13, 17, 20, 22] : [1, 3, 5, 9, 12, 14, 16, 18];
                     newSignal = { type: "ENTRADA CONFIRMADA", numbers: target, confidence: 96 };
                 }
-
                 if (!newSignal) {
                     const idx = WHEEL_ORDER.indexOf(last);
                     const neighbors = [];
@@ -203,12 +202,14 @@
                 }
             }, [transitionsRanking]);
 
-            // 5. Sync Firestore
+            // 5. Escuta de Dados (REGRA 1 e 2: Caminho Estrito e Ordenação Manual)
             useEffect(() => {
                 if (!user || status !== 'ready') return;
                 const db = firebase.firestore();
+                // REGRA 1: Caminho mandatário
                 const spinsRef = db.collection('artifacts').doc(appId).collection('users').doc(user.uid).collection('spins');
 
+                // REGRA 2: SEM orderBy ou limit para evitar erros de permissão
                 const unsubscribe = spinsRef.onSnapshot((snap) => {
                     const data = snap.docs
                         .map(d => ({ ...d.data() }))
@@ -218,13 +219,14 @@
                     
                     setHistory(data);
                     runLogic(data);
-                }, (err) => console.error("Sync Error:", err));
+                }, (err) => console.error("Erro Sync Cloud:", err));
                 
                 return () => unsubscribe();
             }, [user, status, runLogic]);
 
+            // REGRA 3: Guardar apenas se autenticado
             const addNumber = async (n) => {
-                if (!user) return;
+                if (!user) return; 
                 try {
                     const db = firebase.firestore();
                     const spinsRef = db.collection('artifacts').doc(appId).collection('users').doc(user.uid).collection('spins');
@@ -232,64 +234,56 @@
                         number: parseInt(n),
                         timestamp: firebase.firestore.FieldValue.serverTimestamp()
                     });
-                } catch (e) { console.error("Error write:", e); }
+                } catch (e) { console.error("Erro na gravação:", e); }
             };
 
             if (status === 'init') return (
                 <div className="min-h-screen flex flex-col items-center justify-center bg-black">
                     <div className="loading-ring"></div>
-                    <p className="mt-4 text-[10px] font-black text-emerald-500 uppercase tracking-widest animate-pulse">Iniciando Servidor Elite...</p>
+                    <p className="mt-4 text-[10px] font-black text-emerald-500 uppercase tracking-widest animate-pulse italic">Core Sincronizando...</p>
                 </div>
             );
 
             return (
-                <div className="min-h-screen p-4 lg:p-10 bg-[#030305] animate-in overflow-y-auto selection:bg-emerald-500/30">
+                <div className="min-h-screen p-4 lg:p-10 bg-[#030305] animate-in overflow-y-auto">
                     <div className="max-w-6xl mx-auto space-y-8">
                         
-                        {/* HEADER */}
-                        <header className="glass-effect p-6 rounded-[2.5rem] flex justify-between items-center shadow-2xl border-emerald-500/10">
+                        <header className="glass-effect p-6 rounded-[2.5rem] flex justify-between items-center shadow-2xl">
                             <div className="flex items-center gap-5 text-left">
-                                <div className="w-14 h-14 bg-emerald-600 rounded-2xl flex items-center justify-center shadow-lg shadow-emerald-950/40">
+                                <div className="w-14 h-14 bg-emerald-600 rounded-2xl flex items-center justify-center shadow-lg">
                                     <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-white"><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" /></svg>
                                 </div>
                                 <div>
-                                    <h1 className="text-lg font-black uppercase italic tracking-tighter text-white leading-none">Quantum <span className="text-emerald-500">Elite V5.3</span></h1>
-                                    <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest mt-2 italic flex items-center gap-2">
-                                        <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
-                                        Sincronizado via Cloud
+                                    <h1 className="text-lg font-black uppercase italic tracking-tighter text-white">Quantum <span className="text-emerald-500">Elite V5.3</span></h1>
+                                    <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest mt-2 flex items-center gap-2">
+                                        <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
+                                        Base de Dados Conectada
                                     </p>
                                 </div>
                             </div>
                             <div className="text-right">
-                                <p className="text-[10px] text-zinc-500 font-bold uppercase mb-1 tracking-tighter">Banca Recomendada</p>
+                                <p className="text-[10px] text-zinc-500 font-bold uppercase mb-1">Banca Sugerida</p>
                                 <p className="text-xl font-black text-emerald-500 italic tracking-tighter">R$ 100,00</p>
                             </div>
                         </header>
 
-                        {/* GRID PRINCIPAL */}
                         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
                             
-                            {/* COLUNA ESQUERDA: MONITOR E TECLADO */}
+                            {/* LADO ESQUERDO: CONTROLO */}
                             <div className="lg:col-span-8 space-y-8">
                                 
-                                {/* MONITOR CENTRAL */}
-                                <div className={`relative min-h-[420px] p-10 rounded-[3rem] border-2 transition-all duration-700 flex flex-col items-center justify-center ${signal ? 'highlight-green' : 'bg-zinc-900/20 border-zinc-800 shadow-inner'}`}>
+                                <div className={`relative min-h-[420px] p-10 rounded-[3rem] border-2 transition-all duration-700 flex flex-col items-center justify-center ${signal ? 'highlight-green' : 'bg-zinc-900/20 border-zinc-800'}`}>
                                     {!signal ? (
                                         <div className="text-center space-y-10 w-full animate-in">
                                             <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-emerald-500/20 mx-auto">
                                                 <circle cx="12" cy="12" r="10" /><path d="m12 12 4 4" className="animate-pulse" />
                                             </svg>
                                             <div className="space-y-5">
-                                                <div className="space-y-2 text-center">
-                                                    <h2 className="text-xs font-black uppercase tracking-[0.5em] text-zinc-400">ANALISANDO MESA</h2>
-                                                    <p className="text-[11px] text-zinc-600 font-bold uppercase tracking-widest italic text-center">IA EM VIGILÂNCIA TOTAL</p>
-                                                </div>
+                                                <h2 className="text-xs font-black uppercase tracking-[0.5em] text-zinc-400">ANALISANDO MESA</h2>
                                                 <div className="w-64 h-1.5 bg-zinc-800/50 mx-auto rounded-full overflow-hidden border border-zinc-800">
-                                                    <div className="h-full bg-emerald-500 transition-all duration-1000 ease-out shadow-[0_0_12px_#10b981]" style={{ width: `${progress}%` }}></div>
+                                                    <div className="h-full bg-emerald-500 transition-all duration-1000" style={{ width: `${progress}%` }}></div>
                                                 </div>
-                                                <p className="text-[11px] text-zinc-500 px-10 leading-relaxed italic text-center">
-                                                    {history.length < 3 ? `Introduza mais ${3 - history.length} registos para calibração.` : "Aguardando gatilho de assertividade estocástica..."}
-                                                </p>
+                                                <p className="text-[11px] text-zinc-500 px-10 italic">IA em vigilância total. Aguardando padrão.</p>
                                             </div>
                                         </div>
                                     ) : (
@@ -302,10 +296,10 @@
                                             </div>
 
                                             <div className="space-y-5">
-                                                <p className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest">APOSTAR EM PLENOS (R$ 1,00):</p>
+                                                <p className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest italic">APOSTAR EM PLENOS:</p>
                                                 <div className="grid grid-cols-4 gap-4">
                                                     {signal.numbers.map((n, i) => (
-                                                        <div key={i} className={`h-16 rounded-2xl flex flex-col items-center justify-center border-2 border-white/10 shadow-2xl transition-all ${COLORS.red.includes(n) ? 'bg-red-600 border-red-400/20' : n === 0 ? 'bg-emerald-600 text-black border-emerald-400/20' : 'bg-zinc-950 border-zinc-800'}`}>
+                                                        <div key={i} className={`h-16 rounded-2xl flex flex-col items-center justify-center border-2 border-white/10 shadow-2xl ${COLORS.red.includes(n) ? 'bg-red-600 border-red-400/20' : n === 0 ? 'bg-emerald-600 text-black border-emerald-400/20' : 'bg-zinc-950 border-zinc-800'}`}>
                                                             <span className="text-2xl font-black text-white leading-none">{n}</span>
                                                             <span className="text-[9px] opacity-60 font-black uppercase mt-1">Bet R$ 1</span>
                                                         </div>
@@ -319,13 +313,13 @@
                                                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41" /></svg>
                                                         AUDITORIA IA QUANTUM
                                                     </div>
-                                                    <span className="text-[9px] font-black text-zinc-600 uppercase bg-black px-3 py-1.5 rounded-full">Assertividade: {signal.confidence}%</span>
+                                                    <span className="text-[9px] font-black text-zinc-600 uppercase bg-black px-3 py-1.5 rounded-full tracking-tighter">Confiança: {signal.confidence}%</span>
                                                 </div>
                                                 {isAiLoading ? (
-                                                    <p className="text-[11px] text-emerald-500/50 animate-pulse italic">IA a processar permutações (Bernoulli & Poisson)...</p>
+                                                    <p className="text-[11px] text-emerald-500/50 animate-pulse italic">IA a processar permutações...</p>
                                                 ) : (
                                                     <p className="text-[11px] text-zinc-300 italic line-clamp-4 leading-relaxed font-medium">
-                                                        {aiFeedback || "Verificando probabilidade de sequência através de análise fractal..."}
+                                                        {aiFeedback || "Verificando probabilidade estatística..."}
                                                     </p>
                                                 )}
                                             </div>
@@ -333,15 +327,14 @@
                                     )}
                                 </div>
 
-                                {/* TECLADO PROFISSIONAL AMPLIADO */}
                                 <div className="glass-effect p-8 rounded-[3rem] border border-zinc-800 shadow-2xl">
                                     <div className="grid grid-cols-6 gap-4">
-                                        <button onClick={() => addNumber(0)} className="col-span-12 h-16 bg-emerald-600 hover:bg-emerald-500 rounded-2xl font-black text-2xl border border-emerald-500/20 transition-all mb-4 btn-active shadow-lg shadow-emerald-950/40 text-black">0</button>
+                                        <button onClick={() => addNumber(0)} className="col-span-12 h-16 bg-emerald-600 hover:bg-emerald-500 rounded-2xl font-black text-2xl border border-emerald-500/20 transition-all mb-4 btn-active text-black shadow-xl">0</button>
                                         {[3, 6, 9, 12, 15, 18, 2, 5, 8, 11, 14, 17, 1, 4, 7, 10, 13, 16, 21, 24, 27, 30, 33, 36, 20, 23, 26, 29, 32, 35, 19, 22, 25, 28, 31, 34].map(n => (
                                             <button 
                                                 key={n} 
                                                 onClick={() => addNumber(n)} 
-                                                className={`h-16 flex items-center justify-center font-black text-xl rounded-xl border-b-4 active:scale-90 transition-all text-white btn-active shadow-lg ${COLORS.red.includes(n) ? 'bg-red-600 border-red-900' : 'bg-zinc-800 border-zinc-950 shadow-black/60'}`}
+                                                className={`h-16 flex items-center justify-center font-black text-xl rounded-xl border-b-4 active:scale-90 transition-all text-white btn-active shadow-lg ${COLORS.red.includes(n) ? 'bg-red-600 border-red-900' : 'bg-zinc-800 border-zinc-950'}`}
                                             >
                                                 {n}
                                             </button>
@@ -350,82 +343,66 @@
                                 </div>
                             </div>
 
-                            {/* COLUNA DIREITA: RANKING E HISTÓRICO */}
+                            {/* LADO DIREITO */}
                             <div className="lg:col-span-4 space-y-8">
-                                
-                                {/* RANKING ORDENS DE SAÍDA (LARGURA FIXA E VISÍVEL) */}
                                 <div className="glass-effect p-8 rounded-[3rem] border border-zinc-800 shadow-xl min-h-[420px] flex flex-col">
                                     <div className="flex justify-between items-center mb-8">
                                         <h3 className="text-[12px] font-black uppercase text-zinc-300 tracking-widest flex items-center gap-3">
                                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M7 11V7a5 5 0 0 1 10 0v4"/><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/></svg>
                                             ORDENS DE SAÍDA
                                         </h3>
-                                        <span className="text-[8px] font-black text-zinc-600 bg-black px-2.5 py-1 rounded-full uppercase">Mesa Live</span>
+                                        <span className="text-[8px] font-black text-zinc-600 bg-black px-2.5 py-1 rounded-full uppercase">Live</span>
                                     </div>
-                                    
-                                    <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-tighter mb-6">Frequência após o Nº {history[0] ?? '?'}:</p>
-                                    
                                     <div className="space-y-4 flex-1">
                                         {transitionsRanking ? transitionsRanking.map((item, idx) => (
-                                            <div key={idx} className="flex justify-between items-center bg-black/50 p-4 rounded-2xl border border-white/5 animate-in shadow-xl hover:border-emerald-500/20 transition-all">
+                                            <div key={idx} className="flex justify-between items-center bg-black/50 p-4 rounded-2xl border border-white/5 animate-in">
                                                 <div className="flex items-center gap-5">
-                                                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-xl shadow-2xl ${COLORS.red.includes(item.num) ? 'bg-red-600 border border-red-400/20' : item.num === 0 ? 'bg-emerald-600 text-black border-emerald-400/20' : 'bg-zinc-800 border border-zinc-700 text-zinc-200'}`}>
+                                                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-xl shadow-2xl ${COLORS.red.includes(item.num) ? 'bg-red-600' : item.num === 0 ? 'bg-emerald-600 text-black' : 'bg-zinc-800'}`}>
                                                         {item.num}
                                                     </div>
-                                                    <div className="text-left space-y-0.5">
-                                                        <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-tighter">Probabilidade</span>
+                                                    <div className="text-left">
                                                         <p className="text-[11px] font-black text-white uppercase tracking-widest">Ranking #{idx + 1}</p>
                                                     </div>
                                                 </div>
                                                 <div className="text-right">
-                                                    <span className="text-lg font-black text-emerald-500 leading-none">{item.count}</span>
-                                                    <p className="text-[9px] font-bold text-zinc-600 uppercase mt-0.5">Vezes</p>
+                                                    <span className="text-lg font-black text-emerald-500">{item.count}</span>
+                                                    <p className="text-[9px] font-bold text-zinc-600 uppercase">Vezes</p>
                                                 </div>
                                             </div>
                                         )) : (
-                                            <div className="flex-1 flex flex-col items-center justify-center bg-black/20 p-8 rounded-[2.5rem] border border-dashed border-zinc-800 text-center">
-                                                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" className="text-zinc-800 mb-4"><path d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"/><path d="M9 10h.01M15 10h.01M9.5 15.5s1.5 1.5 2.5 1.5 2.5-1.5 2.5-1.5"/></svg>
-                                                <p className="text-[11px] text-zinc-600 italic uppercase tracking-widest font-black leading-relaxed">
-                                                    Aguardando mapeamento de tendências de sequência...
-                                                </p>
+                                            <div className="flex-1 flex flex-col items-center justify-center text-center opacity-30">
+                                                <p className="text-[11px] uppercase tracking-widest font-black">Aguardando mapeamento de mesa...</p>
                                             </div>
                                         )}
                                     </div>
                                 </div>
 
-                                {/* HISTÓRICO DE TELEMETRIA RECENTE */}
                                 <div className="glass-effect p-8 rounded-[3rem] border border-zinc-800 shadow-xl h-[360px] flex flex-col">
-                                    <h3 className="text-[12px] font-black uppercase text-zinc-500 tracking-widest mb-6 flex items-center gap-3">
-                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 8v4l3 3m6-3a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"/></svg>
-                                        HISTÓRICO RECENTE
-                                    </h3>
+                                    <h3 className="text-[12px] font-black uppercase text-zinc-500 tracking-widest mb-6">HISTÓRICO RECENTE</h3>
                                     <div className="flex-1 overflow-y-auto pr-3 custom-scrollbar space-y-3">
                                         {history.map((n, i) => (
-                                            <div key={i} className="flex items-center justify-between p-3.5 rounded-2xl bg-white/5 border border-white/5 animate-in shadow-sm">
+                                            <div key={i} className="flex items-center justify-between p-3.5 rounded-2xl bg-white/5 border border-white/5 animate-in">
                                                 <div className="flex items-center gap-5">
-                                                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-black text-sm ${COLORS.red.includes(n) ? 'bg-red-600 shadow-lg shadow-red-950/40' : n === 0 ? 'bg-emerald-600 text-black shadow-lg shadow-emerald-950/40' : 'bg-zinc-950 border border-zinc-800'}`}>
+                                                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-black text-sm ${COLORS.red.includes(n) ? 'bg-red-600' : n === 0 ? 'bg-emerald-600 text-black' : 'bg-zinc-950'}`}>
                                                         {n}
                                                     </div>
-                                                    <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-tighter">
-                                                        {n === 0 ? 'Zero' : COLORS.red.includes(n) ? 'Vermelho' : 'Preto'}
-                                                    </span>
+                                                    <span className="text-[11px] font-bold text-zinc-400 uppercase">{n === 0 ? 'Zero' : COLORS.red.includes(n) ? 'Vermelho' : 'Preto'}</span>
                                                 </div>
-                                                <span className="text-[10px] font-mono text-zinc-700 font-bold"># {history.length - i}</span>
+                                                <span className="text-[10px] font-mono text-zinc-700 font-bold">#{history.length - i}</span>
                                             </div>
                                         ))}
-                                        {history.length === 0 && <p className="text-center py-20 text-[11px] text-zinc-700 italic uppercase font-black tracking-widest">Sem telemetria disponível...</p>}
                                     </div>
                                 </div>
                             </div>
                         </div>
 
                         <footer className="space-y-6 pt-10 pb-10">
-                            <p className="text-[11px] text-zinc-600 text-center uppercase font-black tracking-widest italic animate-pulse">
+                            <p className="text-[11px] text-zinc-600 text-center uppercase font-black tracking-widest animate-pulse italic">
                                 Dica: Só entre na mesa quando o bot emitir o alerta ENTRADA CONFIRMADA.
                             </p>
-                            <div className="bg-red-950/10 border border-red-900/10 p-8 rounded-[3rem] text-center max-w-3xl mx-auto shadow-inner">
-                                <p className="text-[11px] text-zinc-600 italic leading-relaxed font-bold uppercase tracking-tight">
-                                    Motor Elite Quantum V5.3. Análise baseada em cadeias de Markov, Fibonacci e Poisson. Jogue com total responsabilidade e nunca exceda o seu limite de stop-loss.
+                            <div className="bg-red-950/10 border border-red-900/10 p-8 rounded-[3rem] text-center max-w-3xl mx-auto">
+                                <p className="text-[10px] text-zinc-600 uppercase font-black tracking-tighter leading-relaxed">
+                                    Motor Elite Quantum V5.3. Análise estatística de alta precisão baseada em Markov e Poisson. Jogue com responsabilidade.
                                 </p>
                             </div>
                         </footer>
